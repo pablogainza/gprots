@@ -6,9 +6,17 @@ import os
 import requests
 from tqdm.auto import tqdm
 from Bio import SeqIO
+import sys
+
+in_fasta = sys.argv[1]
+outdir = sys.argv[2]
+if not os.path.exists(outdir):
+    os.makedirs(outdir)
 
 seqs = []
-for record in SeqIO.parse("cluster_P30542.fasta", "fasta"):
+acc = []
+for record in SeqIO.parse(in_fasta, "fasta"):
+    acc.append(record.id.split('|')[1])
     seqs.append(record.seq)
 
 seqs_bert = []
@@ -24,7 +32,15 @@ fe = pipeline('feature-extraction', model=model, tokenizer=tokenizer,device=0)
 #sequences_Example = [re.sub(r"[UZOB]", "X", sequence) for sequence in sequences_Example]
 
 print('Starting embedding')
-embedding = fe(seqs_bert)
+# split into files of size 100
+splits = np.arange(0,len(seqs_bert), 100)
+splits = np.append(splits, len(seqs_bert))
+split_embeddings = []
+for i in range(len(splits)-1):
+    embedding = fe(seqs_bert[splits[i]:splits[i+1]])
+    split_embeddings.extend(embedding)
+
+embedding = split_embeddings
 
 features = [] 
 
@@ -35,6 +51,13 @@ for seq_num in range(len(embedding)):
     seq_emd = embedding[seq_num][start_Idx:end_Idx]
     features.append(seq_emd)
 
-print(len(list(seqs[0])))
-print(len(features[0]))
+assert(len(features) == len(seqs))
+for ix, uniprotid in enumerate(acc): 
+    outfn_seq = os.path.join(outdir, uniprotid+'_seq.npy')
+    np.save(outfn_seq, seqs[ix])
+    
+    outfn_feat = os.path.join(outdir, uniprotid+'_feat.npy')
+    np.save(outfn_feat, features[ix])
+    assert(len(features[ix]) == len(list(seqs[ix])))
+
 

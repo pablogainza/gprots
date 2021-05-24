@@ -1,5 +1,4 @@
-﻿,,,,Amplitude,,,,,,Activation,,,,
-PDB,UniprotAcc,UniprotName,GeneName,gnao,gnaq,gna15,gnas2,gnas13,,gnao,gnaq,gna15,gnas2,gnas13
+﻿PDB,UniprotAcc,UniprotName,GeneName,gnaoAmp,gnaqAmp,gna15Amp,gnas2Amp,gnas13Amp,,gnaoAc,gnaqAc,gna15Ac,gnas2Ac,gnas13Ac
 ClassA_sucr1_human_Active_6LFO_2021-02-08_GPCRDB.pdb,Q9BXA5,SUCR1_HUMAN,SUCNR1,100,0,0,0,0,,100,0,0,0,0
 ClassA_5ht1a_human_Active_6G79_2021-02-08_GPCRDB.pdb,P08908,5HT1A_HUMAN,HTR1A,100,0,49.38901018,0,0,,100,0,0.693251696,0,0
 ClassA_5ht1d_human_Active_6G79_2021-02-08_GPCRDB.pdb,P28221,5HT1D_HUMAN,HTR1D,100,0,0,0,0,,100,0,0,0,0
@@ -48,11 +47,3 @@ ClassA_ssr1_human_Active_6B73_2021-02-08_GPCRDB.pdb,P30872,SSR1_HUMAN,SSTR1,100,
 ClassA_ssr3_human_Active_6B73_2021-02-08_GPCRDB.pdb,P32745,SSR3_HUMAN,SSTR3,100,0,45.2284,0,0,,100,0,1.7448,0,0
 ClassA_ssr5_human_Active_6PT2_2021-02-08_GPCRDB.pdb,P35346,SSR5_HUMAN,SSTR5,100,0,50.7787,0,0,,100,0,1.0089,0,0
 ClassA_kissr_human_Active_6B73_2021-02-08_GPCRDB.pdb,Q969F8,KISSR_HUMAN,KISS1R,0,100.6662,100,0,0,,0,100,29.4516,0,0
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
