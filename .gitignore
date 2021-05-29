@@ -1,0 +1,5 @@
+*.npy
+*.aln
+*.fasta
+*DS_Store
+debug.pse
