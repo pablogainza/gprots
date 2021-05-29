@@ -30,9 +30,11 @@ one_letter ={'VAL':'V', 'ILE':'I', 'LEU':'L', 'GLU':'E', 'GLN':'Q', \
 def getIfaceInQuery(align_fn, gpcr_name, iface_ix): 
     """
        Parse align_fn in clustal format and get the alignment between template 
-       and query. Then map the iface_ix onto the query sequence. 
+       and query. Then map the interface residues of the template (defined by index in iface_ix)
+       onto the query sequence. 
 
-       Returns: for iface_ix in the query (gpcr_name)
+       Returns: the aligned query and the residues corresponding to iface_ix \
+           in the ALIGNED query defined in (gpcr_name)
     """
     template_aln_seq = []
     query_aln_seq = []
@@ -45,7 +47,8 @@ def getIfaceInQuery(align_fn, gpcr_name, iface_ix):
                 entry = list(line.rstrip())
                 query_aln_seq.extend(entry[13:])
         
-    # Now, go through the template_aln and select the interface vertices, ignore dashes. 
+    # Now, go through the template_aln and select the interface vertices.
+    # For the template it is very important to ignore the dashes. 
     count_not_dash = -1
     iface_in_aln = []
     for i in range(len(template_aln_seq)):
@@ -53,35 +56,53 @@ def getIfaceInQuery(align_fn, gpcr_name, iface_ix):
             count_not_dash += 1
             if count_not_dash in iface_ix:
                 iface_in_aln.append(i)
+
+
+    return query_aln_seq, iface_in_aln
     
-    # Go through query_aln and selct the interface vertices based on iface_in_aln, ignoring dashes as well.
-    count_not_dash = -1
-    iface_in_query = []
-    for i in range(len(query_aln_seq)):
-        if query_aln_seq[i] != '-':
-            count_not_dash+= 1
-            if i in iface_in_aln:
-                iface_in_query.append(count_not_dash)
-
-    return iface_in_query    
 
 
-
-# Compute the sequence identity between rseq and qseq, after alignment
 def seq_id(rseq, qseq):
+    """
+        Compute the sequence identity between rseq and qseq, after alignment, ignoring dashes.
+    """
     n = len(list(rseq))
+    if len(rseq) == 0 or len(qseq) == 0:
+        return 0
     identical = 0
     for i in range(n):
-        if rseq[i] == qseq[i]:
+        if rseq[i] == qseq[i] and rseq[i] != '-' and qseq[i] != '-':
             identical += 1
     return identical/n
 
-# Align qseq to rseq with clustal, return the residues in qseq that correspond to the interface residues in rseq.
 def align_seqs(rseq, qseq, rinterface):
-    # Save rseq and qseq to temp.fasta
+    """
+    Align qseq to rseq with clustal, return the residues in qseq that correspond to the interface residues in rseq.
+
+        rseq: reference sequence (potentially with gaps '-')
+        qseq: query sequence. 
+        rinterface: indices in rseq (including gaps) that are interface.
+
+    Returns: 
+        iface_in_query: interface residues in the query sequence, in order. 
+            if a residue is missing the query, then a -1 is set at that position.
+
+    """
+    
+    # rseq has gaps with respect to the template. Keeping track of these gaps is important
+    # to select always the same residues. To achieve this, we must remove them first and add them later
+    rseq_gapless = []
+    rseq_gap_ix = []
+    for ix, aa in enumerate(list(rseq)):
+        if aa == '-':
+            rseq_gap_ix.append(ix)
+        else:
+            rseq_gapless.append(aa)
+
+    # Save rseq_gapless and qseq to temp.fasta
     with open ('temp.fasta', 'w+') as f:
         f.write('>refseq\n')
-        f.write(''.join(rseq)+'\n')
+        f.write(''.join(rseq_gapless)+'\n')
         f.write('>queryseq\n')
         f.write(''.join(qseq)+'\n')
 
@@ -96,9 +117,12 @@ def align_seqs(rseq, qseq, rinterface):
     # Read the alignment
     stdout = stdout.decode("utf-8")
     lines = stdout.split('\n')
-    i = 1 
+    i = 0
     raln = ''
     qaln = ''
+    while not lines[i].startswith('>refseq'):
+        i += 1
+    i = i+1
     while not lines[i].startswith('>'):
         raln += lines[i]
         i += 1
@@ -106,43 +130,65 @@ def align_seqs(rseq, qseq, rinterface):
     while i < len(lines):
         qaln += lines[i]
         i += 1
-    
-    # Compute the mapping of interface in rseq to qseq. 
 
-    # go through the reference raln and select the interface vertices, ignore dashes. 
+    # Add the gaps that were removed before, using special character *, but add them to both raln and qaln. 
+    raln_w_gaps = []
+    qaln_w_gaps = []
     count_not_dash = -1
-    iface_in_aln = []
     for i in range(len(raln)):
         if raln[i] != '-':
             count_not_dash += 1
+        if count_not_dash in rseq_gap_ix:
+            raln_w_gaps.append('*')
+            qaln_w_gaps.append('*')
+        raln_w_gaps.append(raln[i])
+        qaln_w_gaps.append(qaln[i])
+        
+
+    count_not_dash = -1
+    iface_in_aln = []
+    for i in range(len(raln_w_gaps)):
+        if raln_w_gaps[i] != '-':
+            # Count for the gaps that were removed before invoking clustal to get the right shift.
+            count_not_dash += 1 
             if count_not_dash in rinterface:
                 iface_in_aln.append(i)
     
-    # Go through query_aln and select the interface vertices based on iface_in_aln, ignoring dashes as well.
+    # Go through query_aln and select the interface vertices based on iface_in_aln.
+    # If a gap (dash) appears in query_aln corresponding to an interface residue, add a -1.
     count_not_dash = -1
     iface_in_query = []
     identical_iface = 0.0
     total_iface = 0.0
-    for i in range(len(qaln)):
-        if qaln[i] != '-':
+    for i in range(len(qaln_w_gaps)):
+        if qaln_w_gaps[i] != '-':
             count_not_dash += 1
-            if i in iface_in_aln:
+        if i in iface_in_aln:
+            total_iface += 1
+            if raln_w_gaps[i] == qaln_w_gaps[i]:
+                identical_iface += 1
+            if qaln_w_gaps[i] != '*' and qaln_w_gaps[i] != '-':
                 iface_in_query.append(count_not_dash)
-                total_iface += 1
-                if raln[i] == qaln[i]:
-                    identical_iface += 1
+            else:
+                iface_in_query.append(-1)
+    assert(len(iface_in_query) == len(rinterface))
    
+    if total_iface ==0:
+        total_iface = 1
+    new_iface = ''.join([qaln_w_gaps[x] for x in iface_in_query])
+    print(new_iface)
     print('Fraction identical in interface: {:.3f}, total: {}'.format(identical_iface/total_iface, total_iface))
 
-    # Compute the sequence identity between the sequences, in two directions.
+    # Compute the sequence identity between the sequences, in two directions ignoring dashes.
     sequence_identity = max(seq_id(raln, qaln), seq_id(qaln, raln))
-    print(raln)
-    print(qaln)
+    print(f"Sequence identity: {seq_id(raln,qaln)}, {seq_id(qaln, raln)}")
+    #print(raln)
+    #print(qaln)
 
-    return sequence_identity
+    return iface_in_query
 
 # Compute the interface residues, size N, of the template structure and label them. 
-cmd.select('iface_res', 'template and byRes((chain A or chain B) around 10)')
+cmd.select('iface_res', 'template and byRes((chain A or chain B) around 5)')
 cmd.select('ifaceR', f'iface_res and chain R')
 stored.iface = []
 cmd.iterate('ifaceR and name ca', 'stored.iface.append(resi)')
@@ -176,6 +222,7 @@ pdb_names= gtdf['PDB'].tolist()
 
 # For each GPCR in our dataset 
 for ix, gpcr in enumerate(all_gpcrs):
+
     # Read the PDB of the corresponding human GPCR
     cmd.load(f'../data01_gpcrs/{pdb_names[ix]}', gpcr)
 
@@ -188,45 +235,55 @@ for ix, gpcr in enumerate(all_gpcrs):
     align_ret = cmd.align(gpcr, 'templateR', object=f'aln_{gpcr}')
 
     # Assert that the alignment RMSD < 10.0
-    print(f"RMSD: {align_ret[0]}, atoms after: {align_ret[1]}, atoms before: {align_ret[4]}")
+    print(f"{gpcr} RMSD: {align_ret[0]}, atoms after: {align_ret[1]}, atoms before: {align_ret[4]}")
     
 
     # Mark the interface residues in the aligned PDB to correspond exactly to those in the template. 
     # It is very important here that if there are gaps in this GPCR (i.e. interface residues not present)
     # Then the gaps are preserved. For this we preserve the dash.
-    cmd.save(f'{gpcr}.aln',f'aln_{gpcr}')
+    cmd.save(f'/tmp/{gpcr}.aln',f'aln_{gpcr}')
 
     # We now need a mapping from the residues in the interface of the template to those in the 
     # new GPCR. 
-    iface_in_query = getIfaceInQuery(f'{gpcr}.aln', gpcr, iface_ix)
+    query_aln, iface_in_query_aln = getIfaceInQuery(f'/tmp/{gpcr}.aln', gpcr, iface_ix)
 
-    # and the residue id of each one.
-    stored.query_resi = []
-    cmd.iterate(f'name ca and {gpcr}', 'stored.query_resi.append(resi)')
-    query_resi = stored.query_resi
-    query_abs_resi =[]
-    outdebug = ''
-    for jj, res in enumerate(query_resi):
-        if jj in iface_in_query:
-            query_abs_resi.append(res)
+    # Print how many are identical to the template.
+    print(''.join(np.asarray(template_seq)[iface_ix]))
+    print(''.join(np.asarray(query_aln)[iface_in_query_aln]))
+    count_identical = 0.0
+    for i in range(len(iface_ix)):
+        if np.asarray(template_seq)[iface_ix][i] == np.asarray(query_aln)[iface_in_query_aln][i]:
+            count_identical+=1 
+    print('count_identical: {:.2f}'.format(count_identical/len(iface_ix)))
 
-    
     # Load the human sequence and align to the 'query' sequence, which is the PDB model from GPCRDB.
     curdir = dataset_dir.format(gpcr)
     human_seq = np.load(os.path.join(curdir, human_uniprotid[ix]+'_seq.npy'))
 
-    identity_to_templ = align_seqs(query_seq, human_seq, rinterface=iface_in_query)
+    iface_in_human_seq = align_seqs(query_aln, human_seq, rinterface=iface_in_query_aln)
+
+    # Now, as a verification of the alignments, color the residues in the interface in 
+    # red using the numbering of the uniprot protein.
+    cmd.color('white', f'{gpcr}')
+    resi_string =[str(x+1) for x in iface_in_human_seq if x >= 0]
+    resi_string = '+'.join(resi_string)
+    cmd.color('orange', f'{gpcr} and resi {resi_string}')
 
 #    print(f'Seq id to template = {identity_to_templ}')
     #print(''.join(human_seq))
     # Now go through each sequence in UNIREF50 for the GPCR and align it to the prealigned human model. 
+#    count_homo = 0.0
 #    for fn in os.listdir(curdir):
 #        if fn.endswith('seq.npy'):
 #            acc = fn.split('_')[0]
 #            seq = np.load(os.path.join(curdir, fn))
             # For sanity, check that the sequence has X identity. Also store the identity. 
             # Perform the actual alignment to the template and check the identity of the sequence.
-#            identity_to_templ = align_seqs(template_seq, seq, rinterface=None)
+#            iface_in_uniref_seq = align_seqs(query_aln, seq, rinterface=iface_in_query_aln)
+#            count_homo += 1
+#            if count_homo >10:
+#                break
+
 #            print(f'Seq id to template = {identity_to_templ}')
 
 
@@ -241,3 +298,4 @@ for ix, gpcr in enumerate(all_gpcrs):
         # If the UNIREF sequence is the corresponding one for human, save it as HUMAN.npy
 
         # Save the ground truth in numpy for easy access.
+cmd.save('debug.pse')
