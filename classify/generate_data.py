@@ -60,6 +60,22 @@ def getIfaceInQuery(align_fn, gpcr_name, iface_ix):
 
     return query_aln_seq, iface_in_aln
     
+def assign_ix_to_aln(aln):
+    """ 
+    Assign a number to every residue in aln according to its own indexing. 
+    use 'insertion' to account for gaps.
+    """
+    aln_ix = []
+    cur_aln = -1
+    cur_ins = 0
+    for i in range(len(aln)):
+        if aln[i] == '-':
+            cur_ins += 1
+        else: 
+            cur_ins = 0
+            cur_aln += 1
+        aln_ix.append((cur_aln, cur_ins))
+    return aln_ix
 
 
 def seq_id(rseq, qseq):
@@ -92,10 +108,11 @@ def align_seqs(rseq, qseq, rinterface):
     # rseq has gaps with respect to the template. Keeping track of these gaps is important
     # to select always the same residues. To achieve this, we must remove them first and add them later
     rseq_gapless = []
-    rseq_gap_ix = []
+    count_start_gaps = 0
     for ix, aa in enumerate(list(rseq)):
         if aa == '-':
-            rseq_gap_ix.append(ix)
+            rseq_gapless.append('x')
+            count_start_gaps += 1
         else:
             rseq_gapless.append(aa)
 
@@ -131,59 +148,38 @@ def align_seqs(rseq, qseq, rinterface):
         qaln += lines[i]
         i += 1
 
-    # Add the gaps that were removed before, using special character *, but add them to both raln and qaln. 
-    raln_w_gaps = []
-    qaln_w_gaps = []
-    count_not_dash = -1
-    for i in range(len(raln)):
-        if raln[i] != '-':
-            count_not_dash += 1
-        if count_not_dash in rseq_gap_ix:
-            raln_w_gaps.append('*')
-            qaln_w_gaps.append('*')
-        raln_w_gaps.append(raln[i])
-        qaln_w_gaps.append(qaln[i])
-        
-
-    count_not_dash = -1
-    iface_in_aln = []
-    for i in range(len(raln_w_gaps)):
-        if raln_w_gaps[i] != '-':
-            # Count for the gaps that were removed before invoking clustal to get the right shift.
-            count_not_dash += 1 
-            if count_not_dash in rinterface:
-                iface_in_aln.append(i)
+    # Assign a number to every residue in raln and qaln according to its own indexing. 
+    # use 'insertion' to account for gaps.
+    raln_ix = assign_ix_to_aln(raln)
+    qaln_ix = assign_ix_to_aln(qaln)
     
-    # Go through query_aln and select the interface vertices based on iface_in_aln.
-    # If a gap (dash) appears in query_aln corresponding to an interface residue, add a -1.
-    count_not_dash = -1
-    iface_in_query = []
-    identical_iface = 0.0
-    total_iface = 0.0
-    for i in range(len(qaln_w_gaps)):
-        if qaln_w_gaps[i] != '-':
-            count_not_dash += 1
-        if i in iface_in_aln:
-            total_iface += 1
-            if raln_w_gaps[i] == qaln_w_gaps[i]:
-                identical_iface += 1
-            if qaln_w_gaps[i] != '*' and qaln_w_gaps[i] != '-':
-                iface_in_query.append(count_not_dash)
-            else:
-                iface_in_query.append(-1)
-    assert(len(iface_in_query) == len(rinterface))
-   
-    if total_iface ==0:
-        total_iface = 1
-    new_iface = ''.join([qaln_w_gaps[x] for x in iface_in_query])
-    print(new_iface)
-    print('Fraction identical in interface: {:.3f}, total: {}'.format(identical_iface/total_iface, total_iface))
+    # The last insertion must correspond to the length.
+    assert (raln_ix[-1][0] == len(rseq)-1)
+    assert (qaln_ix[-1][0] == len(qseq)-1)
 
-    # Compute the sequence identity between the sequences, in two directions ignoring dashes.
+    # Now get the interface residues in raln based on qaln.
+    iface_in_query = []
+    qiface_seq = []
+    identical_iface = 0.0
+    for i in range(len(raln_ix)):
+        if raln_ix[i][0] in rinterface and raln_ix[i][1] == 0:
+            if qaln[i] == '-':
+                iface_in_query.append(-1)
+                qiface_seq.append('-')
+            else:
+                assert(qaln_ix[i][1] == 0)
+                iface_in_query.append(qaln_ix[i][0])
+                qiface_seq.append(qaln[i])
+            if raln[i] == qaln[i]:
+                identical_iface += 1
+    set_trace()
+
+
+    print(''.join(qiface_seq))
+    print('Fraction identical in interface: {:.3f}, total: {}'.format(identical_iface/len(rinterface), identical_iface))
+
     sequence_identity = max(seq_id(raln, qaln), seq_id(qaln, raln))
     print(f"Sequence identity: {seq_id(raln,qaln)}, {seq_id(qaln, raln)}")
-    #print(raln)
-    #print(qaln)
 
     return iface_in_query
 
@@ -222,6 +218,8 @@ pdb_names= gtdf['PDB'].tolist()
 
 # For each GPCR in our dataset 
 for ix, gpcr in enumerate(all_gpcrs):
+    if gpcr != 'PTGDR':
+        continue
 
     # Read the PDB of the corresponding human GPCR
     cmd.load(f'../data01_gpcrs/{pdb_names[ix]}', gpcr)
