@@ -1,11 +1,156 @@
-# Receive as a parameter the GPCR that will be the testing set. 
+from tensorflow.keras import optimizers
+from IPython.core.debugger import set_trace
+from sklearn.metrics import roc_auc_score
+import pandas as pd
+
+import tensorflow.keras as keras
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Input
+from tensorflow.keras.layers import Conv1D
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.layers import Activation
+from tensorflow.keras.layers import Add
+from tensorflow.keras.layers import MaxPooling1D
+from tensorflow.keras.layers import GlobalMaxPooling1D
+from tensorflow.keras.layers import GlobalAveragePooling1D
+from tensorflow.keras.layers import Dropout
+from tensorflow.keras.layers import Flatten
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Embedding
+from tensorflow.keras.layers import LSTM
+
+from scipy.spatial import cKDTree
+import pymesh
+import numpy as np
+import os
+import sys
 
 # Make a generator class. 
     # In each epoch we randomly select 50 sequences for training. 
     # Go through everyother data directory. 
     # Go through every training instance. 
+class DataGenerator(keras.utils.Sequence):
+    'Generates data for Keras'
+    def __init__(self, gpcrs, human_acc, ground_truth_gpcrs, batch_size=8, seqid_cutoff=0.5):
+        '''
+            Load all data into memory
+        '''
+        data_dir = '../uniref/{}/in_data/'
+        indices_dir= 'generated_indices/{}/'
+        self.X = [] 
+        self.names = []
+        self.accessions = []
+        self.Y = []
+        for gpcr in gpcrs:
+            unique_ids = [x.split('_')[0] for x in os.listdir(indices_dir.format(gpcr)) if x.endswith('iface_indices.npy')] 
+            np.random.shuffle(unique_ids)
+            # pad with copies if size is less than 50
+            if len(unique_ids) < 50:
+                unique_ids = np.concatenate([unique_ids, unique_ids, unique_ids], axis=0)
+            selected_acc = [unique_ids[x] for x in range(50)]
+
+            # always include the human one.
+            selected_acc[0] = human_acc[gpcr]
+            for acc in selected_acc:
+                iface_ix = np.load(os.path.join(indices_dir.format(gpcr), acc+'_iface_indices.npy'))
+                zero_cols = np.where(iface_ix < 0)[0]
+                iface_ix[zero_cols] = 0
+                seq_id = np.load(os.path.join(indices_dir.format(gpcr), acc+'_seq_identity.npy'))
+                if seq_id > seqid_cutoff:
+                    # Load features only for the indices that are in the interface. 
+                    feat = np.load(os.path.join(data_dir.format(gpcr), acc+'_feat.npy'))[iface_ix]
+                    feat[zero_cols,:] = 0
+                    self.X.append(feat)
+                    ground_truth = ground_truth_gpcrs[gpcr]
+                    if ground_truth > 0: 
+                        ground_truth = 1.0
+                    self.Y.append(ground_truth)
+                    self.accessions.append(ground_truth_gpcrs)
+                    self.names.append(gpcr)
+        
+        self.batch_size = batch_size
+        self.indexes = np.arange(len(self.Y))    
+        np.random.shuffle(self.indexes)
+                
+    def __len__(self):
+        'number of batches per epoch'
+        return int(np.floor(len(self.indexes) / self.batch_size))
+
+    def __getitem__(self, index):
+        'Generate one batch of data'
+        # Data is augmented as it is sampled every time. 
+        indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
+
+        # Generate data
+        Xitem = np.array([self.X[ix] for ix in indexes])
+        Yitem = np.array([self.Y[ix] for ix in indexes])
+
+        return Xitem, Yitem
+            
+# Receive as a parameter the GPCR that will be the testing set. 
+test_gpcr = 'PTGDR'
+
+# Load the ground truth.
+gtdf = pd.read_csv('../ground_truth.csv')
+
+all_gpcrs = gtdf['GeneName'].tolist()
+human_uniprotid = gtdf['UniprotAcc'].tolist()
+amplitude_gnaq = gtdf['gnaqAmp'].tolist()
+
+groundtruth = {}
+human_acc = {}
+for ix, gpcr in enumerate(all_gpcrs):
+    groundtruth[gpcr] = amplitude_gnaq[ix]
+    human_acc[gpcr] = human_uniprotid[ix]
+
+all_ids = np.arange(len(all_gpcrs))
+np.random.shuffle(all_ids)
+
+n = len(all_ids)
+training_ids = [x for x in all_ids[:38] if all_gpcrs[x] != test_gpcr]
+val_ids = [x for x in all_ids[38:] if all_gpcrs[x] != test_gpcr]
+
+training_gpcrs = [all_gpcrs[x] for x in training_ids]
+val_gpcrs = [all_gpcrs[x] for x in val_ids]
 
 # Define generator for validation and for training (possibly, mix ?) 
+training_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5)
+val_generator = DataGenerator(val_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5)
+
+LR = 0.0009 # maybe after some (10-15) epochs reduce it to 0.0008-0.0007
+drop_out = 0.38
+batch_dim = 64
+
+model = Sequential()
+model.add(Input(shape=(79,1024)))
+model.add(Dropout(drop_out))
+model.add(Dense(16, activation='relu'))
+model.add(BatchNormalization())
+#model.add(Dropout(drop_out))
+model.add(BatchNormalization())
+model.add(Flatten())
+model.add(Dropout(drop_out))
+#model.add(Dropout(drop_out))
+# Reduce to one.
+model.add(Dense(32, activation='relu'))
+model.add(BatchNormalization())
+model.add(Dense(4, activation='relu'))
+model.add(BatchNormalization())
+#model.add(Dropout(drop_out))
+model.add(Dense(1, activation = 'sigmoid'))
+
+opt = optimizers.Adam(lr=LR)
+
+model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['binary_crossentropy', 'accuracy'])
+#model.summary()
+
+checkpoint = ModelCheckpoint('models/weights_learn_amplitude.hdf5', monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+callbacks_list = [checkpoint]
+history = model.fit_generator(generator=training_generator, epochs=100, validation_data=val_generator, callbacks=callbacks_list)
+
+#model.load_weights('models/weights_learn_activation_{}.hdf5'.format(cur_gpcr))
 
 # Define the model (same one for neural network) 
     # Input: N, 1024
