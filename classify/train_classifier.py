@@ -21,8 +21,6 @@ from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Embedding
 from tensorflow.keras.layers import LSTM
 
-from scipy.spatial import cKDTree
-import pymesh
 import numpy as np
 import os
 import sys
@@ -33,7 +31,7 @@ import sys
     # Go through every training instance. 
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
-    def __init__(self, gpcrs, human_acc, ground_truth_gpcrs, batch_size=8, seqid_cutoff=0.5):
+    def __init__(self, gpcrs, human_acc, ground_truth_gpcrs, batch_size=8, seqid_cutoff=0.5, human_only=False):
         '''
             Load all data into memory
         '''
@@ -45,14 +43,17 @@ class DataGenerator(keras.utils.Sequence):
         self.Y = []
         for gpcr in gpcrs:
             unique_ids = [x.split('_')[0] for x in os.listdir(indices_dir.format(gpcr)) if x.endswith('iface_indices.npy')] 
-            np.random.shuffle(unique_ids)
-            # pad with copies if size is less than 50
-            if len(unique_ids) < 50:
-                unique_ids = np.concatenate([unique_ids, unique_ids, unique_ids], axis=0)
-            selected_acc = [unique_ids[x] for x in range(50)]
+            if human_only: 
+                selected_acc = [human_acc[gpcr]]
+            else:
+                np.random.shuffle(unique_ids)
+                # pad with copies if size is less than 50
+                if len(unique_ids) < 50:
+                    unique_ids = np.concatenate([unique_ids, unique_ids, unique_ids], axis=0)
+                selected_acc = [unique_ids[x] for x in range(50)]
+                # always include the human one.
+                selected_acc[0] = human_acc[gpcr]
 
-            # always include the human one.
-            selected_acc[0] = human_acc[gpcr]
             for acc in selected_acc:
                 iface_ix = np.load(os.path.join(indices_dir.format(gpcr), acc+'_iface_indices.npy'))
                 zero_cols = np.where(iface_ix < 0)[0]
@@ -90,34 +91,37 @@ class DataGenerator(keras.utils.Sequence):
         return Xitem, Yitem
             
 # Receive as a parameter the GPCR that will be the testing set. 
-test_gpcr = 'PTGDR'
+test_gpcr = [sys.argv[1]]
+gprotein = sys.argv[2]
+ignore_gpcr = 'PTGDR'
 
 # Load the ground truth.
 gtdf = pd.read_csv('../ground_truth.csv')
 
 all_gpcrs = gtdf['GeneName'].tolist()
 human_uniprotid = gtdf['UniprotAcc'].tolist()
-amplitude_gnaq = gtdf['gnaqAmp'].tolist()
+amplitude = gtdf[gprotein].tolist()
 
 groundtruth = {}
 human_acc = {}
 for ix, gpcr in enumerate(all_gpcrs):
-    groundtruth[gpcr] = amplitude_gnaq[ix]
+    groundtruth[gpcr] = amplitude[ix]
     human_acc[gpcr] = human_uniprotid[ix]
 
 all_ids = np.arange(len(all_gpcrs))
 np.random.shuffle(all_ids)
 
 n = len(all_ids)
-training_ids = [x for x in all_ids[:38] if all_gpcrs[x] != test_gpcr]
-val_ids = [x for x in all_ids[38:] if all_gpcrs[x] != test_gpcr]
+training_ids = [x for x in all_ids[:38] if all_gpcrs[x] != test_gpcr[0] and all_gpcrs[x] != ignore_gpcr]
+val_ids = [x for x in all_ids[38:] if all_gpcrs[x] != test_gpcr[0] and all_gpcrs[x] != ignore_gpcr]
 
 training_gpcrs = [all_gpcrs[x] for x in training_ids]
 val_gpcrs = [all_gpcrs[x] for x in val_ids]
 
 # Define generator for validation and for training (possibly, mix ?) 
-training_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5)
-val_generator = DataGenerator(val_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5)
+test_generator = DataGenerator(test_gpcr, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5, human_only=True)
+training_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5, human_only=True)
+val_generator = DataGenerator(val_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5, human_only=True)
 
 LR = 0.0009 # maybe after some (10-15) epochs reduce it to 0.0008-0.0007
 drop_out = 0.38
@@ -128,17 +132,13 @@ model.add(Input(shape=(79,1024)))
 model.add(Dropout(drop_out))
 model.add(Dense(16, activation='relu'))
 model.add(BatchNormalization())
-#model.add(Dropout(drop_out))
-model.add(BatchNormalization())
 model.add(Flatten())
 model.add(Dropout(drop_out))
-#model.add(Dropout(drop_out))
 # Reduce to one.
 model.add(Dense(32, activation='relu'))
 model.add(BatchNormalization())
 model.add(Dense(4, activation='relu'))
 model.add(BatchNormalization())
-#model.add(Dropout(drop_out))
 model.add(Dense(1, activation = 'sigmoid'))
 
 opt = optimizers.Adam(lr=LR)
@@ -146,10 +146,17 @@ opt = optimizers.Adam(lr=LR)
 model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['binary_crossentropy', 'accuracy'])
 #model.summary()
 
-checkpoint = ModelCheckpoint('models/weights_learn_amplitude.hdf5', monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+checkpoint = ModelCheckpoint(f'models/weights_learn_amplitude_{gprotein}_{test_gpcr[0]}.hdf5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
 callbacks_list = [checkpoint]
-history = model.fit_generator(generator=training_generator, epochs=100, validation_data=val_generator, callbacks=callbacks_list)
+history = model.fit_generator(generator=training_generator, epochs=500, validation_data=val_generator, callbacks=callbacks_list)
 
+test_input, val = test_generator.__getitem__(0)
+result = model.predict(test_input)
+with open('predictions/{}/{}.txt'.format(gprotein, test_gpcr[0]), 'w+') as f: 
+    f.write(f'Pred: {result[0][0]}, gt: {val[0]}\n') 
+    f.write(f"Training gpcrs: {','.join(training_gpcrs)}\n")
+    f.write(f"Val gpcrs: {','.join(val_gpcrs)}\n")
+        
 #model.load_weights('models/weights_learn_activation_{}.hdf5'.format(cur_gpcr))
 
 # Define the model (same one for neural network) 
