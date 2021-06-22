@@ -11,6 +11,8 @@ import numpy as np
 from IPython.core.debugger import set_trace
 import pandas as pd 
 
+# set the iface cutoff
+iface_cutoff = 8
 
 # Read the ground truth.
 gtdf = pd.read_csv('../ground_truth.csv')
@@ -82,13 +84,15 @@ def seq_id(rseq, qseq):
     """
         Compute the sequence identity between rseq and qseq, after alignment, ignoring dashes.
     """
-    n = len(list(rseq))
     if len(rseq) == 0 or len(qseq) == 0:
         return 0
+    n = 0.0
     identical = 0
-    for i in range(n):
-        if rseq[i] == qseq[i] and rseq[i] != '-' and qseq[i] != '-':
-            identical += 1
+    for i in range(len(rseq)):
+        if rseq[i] != '-' and qseq[i] != '-':
+            n+= 1.0
+            if rseq[i] == qseq[i]:
+                identical += 1.0
     return identical/n
 
 def align_seqs(rseq, qseq, rinterface):
@@ -172,8 +176,6 @@ def align_seqs(rseq, qseq, rinterface):
                 qiface_seq.append(qaln[i])
             if raln[i] == qaln[i]:
                 identical_iface += 1
-    set_trace()
-
 
     print(''.join(qiface_seq))
     print('Fraction identical in interface: {:.3f}, total: {}'.format(identical_iface/len(rinterface), identical_iface))
@@ -181,10 +183,10 @@ def align_seqs(rseq, qseq, rinterface):
     sequence_identity = max(seq_id(raln, qaln), seq_id(qaln, raln))
     print(f"Sequence identity: {seq_id(raln,qaln)}, {seq_id(qaln, raln)}")
 
-    return iface_in_query
+    return iface_in_query, sequence_identity, qiface_seq
 
 # Compute the interface residues, size N, of the template structure and label them. 
-cmd.select('iface_res', 'template and byRes((chain A or chain B) around 5)')
+cmd.select('iface_res', f'template and byRes((chain A or chain B) around {iface_cutoff})')
 cmd.select('ifaceR', f'iface_res and chain R')
 stored.iface = []
 cmd.iterate('ifaceR and name ca', 'stored.iface.append(resi)')
@@ -218,7 +220,8 @@ pdb_names= gtdf['PDB'].tolist()
 
 # For each GPCR in our dataset 
 for ix, gpcr in enumerate(all_gpcrs):
-    if gpcr != 'PTGDR':
+    if gpcr == 'PTGDR':
+        print("Ignoring PTGDR for now") 
         continue
 
     # Read the PDB of the corresponding human GPCR
@@ -258,7 +261,7 @@ for ix, gpcr in enumerate(all_gpcrs):
     curdir = dataset_dir.format(gpcr)
     human_seq = np.load(os.path.join(curdir, human_uniprotid[ix]+'_seq.npy'))
 
-    iface_in_human_seq = align_seqs(query_aln, human_seq, rinterface=iface_in_query_aln)
+    iface_in_human_seq, _, _= align_seqs(query_aln, human_seq, rinterface=iface_in_query_aln)
 
     # Now, as a verification of the alignments, color the residues in the interface in 
     # red using the numbering of the uniprot protein.
@@ -267,33 +270,30 @@ for ix, gpcr in enumerate(all_gpcrs):
     resi_string = '+'.join(resi_string)
     cmd.color('orange', f'{gpcr} and resi {resi_string}')
 
-#    print(f'Seq id to template = {identity_to_templ}')
-    #print(''.join(human_seq))
+    outdir = f'generated_indices/{gpcr}'
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+
     # Now go through each sequence in UNIREF50 for the GPCR and align it to the prealigned human model. 
-#    count_homo = 0.0
-#    for fn in os.listdir(curdir):
-#        if fn.endswith('seq.npy'):
-#            acc = fn.split('_')[0]
-#            seq = np.load(os.path.join(curdir, fn))
-            # For sanity, check that the sequence has X identity. Also store the identity. 
-            # Perform the actual alignment to the template and check the identity of the sequence.
-#            iface_in_uniref_seq = align_seqs(query_aln, seq, rinterface=iface_in_query_aln)
-#            count_homo += 1
-#            if count_homo >10:
-#                break
+    count_homo = 0.0
+    for fn in os.listdir(curdir):
+        if fn.endswith('seq.npy'):
+            acc = fn.split('_')[0]
+            seq = np.load(os.path.join(curdir, fn))
+            # Ignore sequences if they are less than 70% of the human sequence
+            if len(seq) > 0.70*len(human_seq):
+                print ('######')
+                print(f'Len human: {len(human_seq)} len homolog: {len(seq)} ')
+                # For sanity, check that the sequence has X identity. Also store the identity. 
+                # Perform the actual alignment to the template and check the identity of the sequence.
+                iface_in_uniref_seq_ix, seq_identity, iface_seq = align_seqs(query_aln, seq, rinterface=iface_in_query_aln)
 
-#            print(f'Seq id to template = {identity_to_templ}')
+                # Open the data directory. 
+                # Save the indices of the interface, the sequence identity of the entire sequence, and the sequence itself.
+                np.save(os.path.join(outdir, acc+'_iface_indices.npy'), iface_in_uniref_seq_ix)
+                np.save(os.path.join(outdir, acc+'_iface_seq.npy'), iface_seq)
+                np.save(os.path.join(outdir, acc+'_seq_identity.npy'), seq_identity)
 
 
 
-
-        # Align to template sequence (use clustal?)  
-
-        # for the N residues in the interface get the 'fingerprints'
-
-        # Save a tensor of size  (N,1024) containing the input data for this training instance. 
-
-        # If the UNIREF sequence is the corresponding one for human, save it as HUMAN.npy
-
-        # Save the ground truth in numpy for easy access.
 cmd.save('debug.pse')

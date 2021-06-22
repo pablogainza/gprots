@@ -31,7 +31,7 @@ import sys
     # Go through every training instance. 
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
-    def __init__(self, gpcrs, human_acc, ground_truth_gpcrs, batch_size=8, seqid_cutoff=0.5, human_only=False):
+    def __init__(self, gpcrs, human_acc, ground_truth_gpcrs, batch_size=32, seqid_cutoff=0.5, human_only=False):
         '''
             Load all data into memory
         '''
@@ -120,8 +120,8 @@ val_gpcrs = [all_gpcrs[x] for x in val_ids]
 
 # Define generator for validation and for training (possibly, mix ?) 
 test_generator = DataGenerator(test_gpcr, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5, human_only=True)
-training_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5, human_only=True)
-val_generator = DataGenerator(val_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5, human_only=True)
+training_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5)
+val_generator = DataGenerator(val_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.8)
 
 LR = 0.0009 # maybe after some (10-15) epochs reduce it to 0.0008-0.0007
 drop_out = 0.38
@@ -130,13 +130,20 @@ batch_dim = 64
 model = Sequential()
 model.add(Input(shape=(79,1024)))
 model.add(Dropout(drop_out))
+model.add(Dense(128, activation='relu'))
+model.add(BatchNormalization())
+model.add(Dropout(drop_out))
 model.add(Dense(16, activation='relu'))
 model.add(BatchNormalization())
+model.add(Dropout(drop_out))
 model.add(Flatten())
+model.add(Dense(128, activation='relu'))
+model.add(BatchNormalization())
 model.add(Dropout(drop_out))
 # Reduce to one.
 model.add(Dense(32, activation='relu'))
 model.add(BatchNormalization())
+model.add(Dropout(drop_out))
 model.add(Dense(4, activation='relu'))
 model.add(BatchNormalization())
 model.add(Dense(1, activation = 'sigmoid'))
@@ -148,7 +155,7 @@ model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['binary_crosse
 
 checkpoint = ModelCheckpoint(f'models/weights_learn_amplitude_{gprotein}_{test_gpcr[0]}.hdf5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
 callbacks_list = [checkpoint]
-history = model.fit_generator(generator=training_generator, epochs=500, validation_data=val_generator, callbacks=callbacks_list)
+history = model.fit_generator(generator=training_generator, epochs=100, validation_data=val_generator, callbacks=callbacks_list)
 
 test_input, val = test_generator.__getitem__(0)
 result = model.predict(test_input)

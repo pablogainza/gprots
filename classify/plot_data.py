@@ -39,6 +39,39 @@ rocauc = roc_auc_score(ytrue, ypred)
 acc = accuracy_score(ytrue, np.round(ypred))
 print(f'Overall performance: roc_auc: {rocauc:.3f}, accuracy: {acc:.3f}, balanced_accuracy: {bal_acc:.3f}')
 
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt 
+# Read GPCRs in order. 
+gpcr_in_order = []
+with open('lists/gpcr_list.txt') as f: 
+    for line in f.readlines(): 
+        gpcr_in_order.append(line.rstrip()+'.txt')
 
+gt_data = []
+pred_data = []
+for gpcr in gpcr_in_order:
+    pred_data.append([preds['gnaoAmp'][gpcr], preds['gnaqAmp'][gpcr], preds['gna15Amp'][gpcr], preds['gnas2Amp'][gpcr], preds['gnas13Amp'][gpcr]])
+    gt_data.append([gts['gnaoAmp'][gpcr], gts['gnaqAmp'][gpcr], gts['gna15Amp'][gpcr], gts['gnas2Amp'][gpcr], gts['gnas13Amp'][gpcr]])
 
-        
+import pandas as pd
+import seaborn as sns
+plt.figure(figsize=(10,20))
+gprots_order = ['Go', 'Gq', 'G15', 'G2', 'G13']
+gpcr_for_print = [x.split('.')[0] for x in gpcr_in_order]
+preddf = pd.DataFrame(pred_data, columns=gprots_order, index=gpcr_for_print)
+mycmap = sns.color_palette("coolwarm") 
+sns.heatmap(preddf, vmin=0, vmax=1, cmap=mycmap, annot=True)
+plt.title("Binary amplitude prediction")
+plt.savefig('amplitude_pred.png') 
+plt.close()
+
+import seaborn as sns
+plt.figure(figsize=(10,20))
+gprots_order = ['Go', 'Gq', 'G15', 'G2', 'G13']
+gpcr_for_print = [x.split('.')[0] for x in gpcr_in_order]
+gtdf = pd.DataFrame(np.round(gt_data), columns=gprots_order, index=gpcr_for_print)
+mycmap = sns.color_palette("coolwarm") 
+sns.heatmap(gtdf, vmin=0, vmax=1, cmap=mycmap, annot=True)
+plt.title("Binary amplitude ground truth")
+plt.savefig('amplitude_gt.png') 
