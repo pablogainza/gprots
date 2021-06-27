@@ -46,13 +46,14 @@ import matplotlib.pyplot as plt
 gpcr_in_order = []
 with open('lists/gpcr_list.txt') as f: 
     for line in f.readlines(): 
-        gpcr_in_order.append(line.rstrip()+'.txt')
+        gpcr_in_order.append(line.split('.')[0].rstrip()+'.txt')
 
 gt_data = []
 pred_data = []
 for gpcr in gpcr_in_order:
-    pred_data.append([preds['gnaoAmp'][gpcr], preds['gnaqAmp'][gpcr], preds['gna15Amp'][gpcr], preds['gnas2Amp'][gpcr], preds['gnas13Amp'][gpcr]])
-    gt_data.append([gts['gnaoAmp'][gpcr], gts['gnaqAmp'][gpcr], gts['gna15Amp'][gpcr], gts['gnas2Amp'][gpcr], gts['gnas13Amp'][gpcr]])
+    pred_data.append([preds['gnaoAc'][gpcr], preds['gnaqAc'][gpcr], preds['gna15Ac'][gpcr], preds['gnas2Ac'][gpcr], preds['gnas13Ac'][gpcr]])
+    gt_data.append([gts['gnaoAc'][gpcr], gts['gnaqAc'][gpcr], gts['gna15Ac'][gpcr], gts['gnas2Ac'][gpcr], gts['gnas13Ac'][gpcr]])
+
 
 import pandas as pd
 import seaborn as sns
@@ -60,10 +61,10 @@ plt.figure(figsize=(10,20))
 gprots_order = ['Go', 'Gq', 'G15', 'G2', 'G13']
 gpcr_for_print = [x.split('.')[0] for x in gpcr_in_order]
 preddf = pd.DataFrame(pred_data, columns=gprots_order, index=gpcr_for_print)
-mycmap = sns.color_palette("coolwarm") 
+mycmap = sns.color_palette("coolwarm")
 sns.heatmap(preddf, vmin=0, vmax=1, cmap=mycmap, annot=True)
-plt.title("Binary amplitude prediction")
-plt.savefig('amplitude_pred.png') 
+plt.title("Binary activation prediction")
+plt.savefig('activation_pred.png')
 plt.close()
 
 import seaborn as sns
@@ -71,7 +72,7 @@ plt.figure(figsize=(10,20))
 gprots_order = ['Go', 'Gq', 'G15', 'G2', 'G13']
 gpcr_for_print = [x.split('.')[0] for x in gpcr_in_order]
 gtdf = pd.DataFrame(np.round(gt_data), columns=gprots_order, index=gpcr_for_print)
-mycmap = sns.color_palette("coolwarm") 
+mycmap = sns.color_palette("coolwarm")
 sns.heatmap(gtdf, vmin=0, vmax=1, cmap=mycmap, annot=True)
-plt.title("Binary amplitude ground truth")
-plt.savefig('amplitude_gt.png') 
+plt.title("Binary activation ground truth")
+plt.savefig('activation_gt.png')

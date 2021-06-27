@@ -65,9 +65,14 @@ class DataGenerator(keras.utils.Sequence):
                     feat[zero_cols,:] = 0
                     self.X.append(feat)
                     ground_truth = ground_truth_gpcrs[gpcr]
-                    if ground_truth > 0: 
-                        ground_truth = 1.0
-                    self.Y.append(ground_truth)
+                    ground_truth_array = np.zeros(3)
+                    if ground_truth >30: 
+                        ground_truth_array[0] = 1
+                    elif ground_truth > 0 and ground_truth <30:
+                        ground_truth_array[1] = 1
+                    else:
+                        ground_truth_array[2] = 1
+                    self.Y.append(ground_truth_array)
                     self.accessions.append(ground_truth_gpcrs)
                     self.names.append(gpcr)
         
@@ -144,23 +149,23 @@ model.add(Dropout(drop_out))
 model.add(Dense(32, activation='relu'))
 model.add(BatchNormalization())
 model.add(Dropout(drop_out))
-model.add(Dense(4, activation='relu'))
+model.add(Dense(16, activation='relu'))
 model.add(BatchNormalization())
-model.add(Dense(1, activation = 'sigmoid'))
+model.add(Dense(3, activation = 'softmax'))
 
 opt = optimizers.Adam(lr=LR)
 
-model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['binary_crossentropy', 'accuracy'])
+model.compile(optimizer=opt, loss='categorical_crossentropy', metrics=['categorical_crossentropy', 'accuracy'])
 #model.summary()
 
-checkpoint = ModelCheckpoint(f'models/weights_learn_amplitude_{gprotein}_{test_gpcr[0]}.hdf5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+checkpoint = ModelCheckpoint(f'models/weights_learn_activation_3cat_{gprotein}_{test_gpcr[0]}.hdf5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
 callbacks_list = [checkpoint]
 history = model.fit_generator(generator=training_generator, epochs=100, validation_data=val_generator, callbacks=callbacks_list)
 
 test_input, val = test_generator.__getitem__(0)
 result = model.predict(test_input)
-with open('predictions/{}/{}.txt'.format(gprotein, test_gpcr[0]), 'w+') as f: 
-    f.write(f'Pred: {result[0][0]}, gt: {val[0]}\n') 
+with open('predictions_activation_3cat/{}/{}.txt'.format(gprotein, test_gpcr[0]), 'w+') as f: 
+    f.write(f'Pred: {result[0]}, gt: {val[0]}\n') 
     f.write(f"Training gpcrs: {','.join(training_gpcrs)}\n")
     f.write(f"Val gpcrs: {','.join(val_gpcrs)}\n")
         

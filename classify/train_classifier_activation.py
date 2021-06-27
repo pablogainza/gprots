@@ -65,7 +65,9 @@ class DataGenerator(keras.utils.Sequence):
                     feat[zero_cols,:] = 0
                     self.X.append(feat)
                     ground_truth = ground_truth_gpcrs[gpcr]
-                    if ground_truth > 0: 
+                    if ground_truth <30: 
+                        ground_truth = 0.0
+                    else:
                         ground_truth = 1.0
                     self.Y.append(ground_truth)
                     self.accessions.append(ground_truth_gpcrs)
@@ -153,13 +155,13 @@ opt = optimizers.Adam(lr=LR)
 model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['binary_crossentropy', 'accuracy'])
 #model.summary()
 
-checkpoint = ModelCheckpoint(f'models/weights_learn_amplitude_{gprotein}_{test_gpcr[0]}.hdf5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+checkpoint = ModelCheckpoint(f'models/weights_learn_amplitude_real_{gprotein}_{test_gpcr[0]}.hdf5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
 callbacks_list = [checkpoint]
 history = model.fit_generator(generator=training_generator, epochs=100, validation_data=val_generator, callbacks=callbacks_list)
 
 test_input, val = test_generator.__getitem__(0)
 result = model.predict(test_input)
-with open('predictions/{}/{}.txt'.format(gprotein, test_gpcr[0]), 'w+') as f: 
+with open('predictions_activation/{}/{}.txt'.format(gprotein, test_gpcr[0]), 'w+') as f: 
     f.write(f'Pred: {result[0][0]}, gt: {val[0]}\n') 
     f.write(f"Training gpcrs: {','.join(training_gpcrs)}\n")
     f.write(f"Val gpcrs: {','.join(val_gpcrs)}\n")
