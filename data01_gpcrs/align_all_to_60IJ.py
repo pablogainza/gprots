@@ -8,7 +8,7 @@ import os
 pdbfn = os.path.basename(sys.argv[1])
 
 # load 6OIJ
-cmd.load('../gproteins/6OIJ_G13/6OIJ.pdb', 'obj01')
+cmd.load('6OIJ/6OIJ.pdb', 'obj01')
 # Remove everything but chain R
 cmd.select('chainR', 'chain R and obj01')
 cmd.create('align_target', 'chainR')
