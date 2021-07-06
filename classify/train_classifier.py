@@ -42,6 +42,8 @@ class DataGenerator(keras.utils.Sequence):
         self.accessions = []
         self.Y = []
         for gpcr in gpcrs:
+            if gpcr =='HTR2B':
+                set_trace()
             unique_ids = [x.split('_')[0] for x in os.listdir(indices_dir.format(gpcr)) if x.endswith('iface_indices.npy')] 
             if human_only: 
                 selected_acc = [human_acc[gpcr]]
@@ -65,12 +67,17 @@ class DataGenerator(keras.utils.Sequence):
                     feat[zero_cols,:] = 0
                     self.X.append(feat)
                     ground_truth = ground_truth_gpcrs[gpcr]
+                    if ground_truth == '?':
+                        ground_truth = 0
+                    else:
+                        ground_truth = float(ground_truth)
                     if ground_truth > 0: 
                         ground_truth = 1.0
                     self.Y.append(ground_truth)
                     self.accessions.append(ground_truth_gpcrs)
                     self.names.append(gpcr)
-        
+        self.Y = np.array(self.Y)
+        print('Number of positives: {}; number of negatives: {} len(names): {}\n names: {}'.format(np.sum(self.Y ==1), np.sum(self.Y ==0), len(self.names), self.names))
         self.batch_size = batch_size
         self.indexes = np.arange(len(self.Y))    
         np.random.shuffle(self.indexes)
@@ -89,16 +96,24 @@ class DataGenerator(keras.utils.Sequence):
         Yitem = np.array([self.Y[ix] for ix in indexes])
 
         return Xitem, Yitem
-            
-# Receive as a parameter the GPCR that will be the testing set. 
-test_gpcr = [sys.argv[1]]
-gprotein = sys.argv[2]
-ignore_gpcr = 'PTGDR'
+          
+test_gpcr = []
+with open('lists/testing01.txt') as f:
+    for line in f.readlines():
+        test_gpcr.append(line.rstrip())
+
+all_train_gpcr = []
+with open('lists/training01.txt') as f:
+    for line in f.readlines():
+        all_train_gpcr.append(line.rstrip())
+
+gprotein = sys.argv[1]
+run_id = sys.argv[2]
 
 # Load the ground truth.
 gtdf = pd.read_csv('../ground_truth.csv')
 
-all_gpcrs = gtdf['GeneName'].tolist()
+all_gpcrs = gtdf['HGNC'].tolist()
 human_uniprotid = gtdf['UniprotAcc'].tolist()
 amplitude = gtdf[gprotein].tolist()
 
@@ -108,21 +123,28 @@ for ix, gpcr in enumerate(all_gpcrs):
     groundtruth[gpcr] = amplitude[ix]
     human_acc[gpcr] = human_uniprotid[ix]
 
-all_ids = np.arange(len(all_gpcrs))
-np.random.shuffle(all_ids)
+all_generator= DataGenerator(all_train_gpcr, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.8, human_only=True)
+set_trace()
 
-n = len(all_ids)
-training_ids = [x for x in all_ids[:38] if all_gpcrs[x] != test_gpcr[0] and all_gpcrs[x] != ignore_gpcr]
-val_ids = [x for x in all_ids[38:] if all_gpcrs[x] != test_gpcr[0] and all_gpcrs[x] != ignore_gpcr]
+np.random.shuffle(all_train_gpcr)
 
-training_gpcrs = [all_gpcrs[x] for x in training_ids]
-val_gpcrs = [all_gpcrs[x] for x in val_ids]
+training_gpcrs = all_train_gpcr[0:38]
+val_gpcrs= all_train_gpcr[38:]
+print(f'Total number of training gpcrs: {len(all_train_gpcr)}')
+
+
 
 # Define generator for validation and for training (possibly, mix ?) 
-test_generator = DataGenerator(test_gpcr, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5, human_only=True)
 training_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5)
 val_generator = DataGenerator(val_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.8)
+print(f'validation: {len(val_gpcrs)} {val_gpcrs}')
+val_human_generator = DataGenerator(val_gpcrs, human_acc, groundtruth, batch_size=128, seqid_cutoff=0.8, human_only=True)
+print(f'training: {len(training_gpcrs)} {training_gpcrs}')
+train_human_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, batch_size=128, seqid_cutoff=0.8, human_only=True)
+print(f'testing: {test_gpcr}')
+test_generator = DataGenerator(test_gpcr, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.5, human_only=True)
 
+set_trace()
 LR = 0.0009 # maybe after some (10-15) epochs reduce it to 0.0008-0.0007
 drop_out = 0.38
 batch_dim = 64
@@ -153,9 +175,19 @@ opt = optimizers.Adam(lr=LR)
 model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['binary_crossentropy', 'accuracy'])
 #model.summary()
 
-checkpoint = ModelCheckpoint(f'models/weights_learn_amplitude_{gprotein}_{test_gpcr[0]}.hdf5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+checkpoint = ModelCheckpoint(f'models/weights_learn_amplitude_{gprotein}_{run_id}.hdf5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
 callbacks_list = [checkpoint]
-history = model.fit_generator(generator=training_generator, epochs=100, validation_data=val_generator, callbacks=callbacks_list)
+history = model.fit_generator(generator=training_generator, epochs=32, validation_data=val_generator, callbacks=callbacks_list)
+
+# Load best model
+model.load_weights(f'models/weights_learn_amplitude_{gprotein}_{run_id}.hdf5')
+
+# Compute ROC AUC on best model's validation set. 
+val_input, ytrue = val_human_generator.__getitem__(0)
+result = model.predict(val_input)
+
+set_trace()
+
 
 test_input, val = test_generator.__getitem__(0)
 result = model.predict(test_input)
@@ -164,14 +196,3 @@ with open('predictions/{}/{}.txt'.format(gprotein, test_gpcr[0]), 'w+') as f:
     f.write(f"Training gpcrs: {','.join(training_gpcrs)}\n")
     f.write(f"Val gpcrs: {','.join(val_gpcrs)}\n")
         
-#model.load_weights('models/weights_learn_activation_{}.hdf5'.format(cur_gpcr))
-
-# Define the model (same one for neural network) 
-    # Input: N, 1024
-    # Fully connected: (N, 256)
-    # Fully connected: (N, 128)
-    # Fully connected: (N, 32)
-    # Reshape N*32 or Max
-    # Fully connected 1 with sigmoid
-
-# Evaluate model on testing set.
