@@ -17,21 +17,32 @@ for ix, row in df.iterrows():
     cmd.select('chainR', 'chain R and obj01')
     cmd.create('align_target', 'chainR')
     cmd.delete('obj01')
+    print(row['HGNC'])
 
     if row['GPCRDB_refined'] != '-':
         pdbfn = f"input_pdbs/from_gpcrdb_refined/{row['GPCRDB_refined']}"
+        print(pdbfn)
+        cmd.load(pdbfn, 'src')
+        cmd.remove('src and not chain R')
     elif row['PDB'] != '-':
         pdbfn = f"input_pdbs/from_pdb/{row['PDB']}"
+        print(pdbfn)
+        cmd.load(pdbfn, 'src')
     elif row['Baker'] != '-':
         pdbfn = f"input_pdbs/from_baker/{row['Baker']}"
+        print(pdbfn)
+        cmd.load(pdbfn, 'src')
     elif row['GPCRDB'] != '-':
         pdbfn = f"input_pdbs/from_gpcrdb/{row['GPCRDB']}"
+        print(pdbfn)
+        cmd.load(pdbfn, 'src')
     else:
         print(f"No pdb file entry for {row} ")
+    # Remove not protein.
+    cmd.remove('src and not polymer.protein')
 
-    cmd.load(pdbfn, 'src')
     cmd.cealign('align_target', 'src', quiet=0)
 #    print(f"RMSD {row['HGNC']} = {ret[0]}")
-    cmd.alter('src', 'chain=\"R\"')
+#    cmd.alter('src', 'chain=\"R\"')
     cmd.save('aligned_renamed_pdbs/{}.pdb'.format(row['HGNC']), 'src')
 
