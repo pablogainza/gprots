@@ -188,6 +188,8 @@ def align_seqs(rseq, qseq, rinterface):
 
     sequence_identity = max(seq_id(raln, qaln), seq_id(qaln, raln))
     print(f"Sequence identity: {seq_id(raln,qaln)}, {seq_id(qaln, raln)}")
+    if seq_id(raln, qaln) <0.95:
+        set_trace()
 
     return iface_in_query, sequence_identity, qiface_seq
 
@@ -239,8 +241,8 @@ for ix, gpcr in enumerate(all_gpcrs):
     outdir = f'generated_indices/{gpcr}'
     if all_classes[ix] != 'A':
         continue
-    if os.path.exists(outdir):
-        continue
+#    if os.path.exists(outdir):
+#        continue
 
     # Read the PDB of the corresponding human GPCR
     cmd.load(f'../data01_gpcrs/aligned_renamed_pdbs/{gpcr}.pdb', gpcr)
@@ -249,6 +251,7 @@ for ix, gpcr in enumerate(all_gpcrs):
     stored.query_seq = []
     cmd.iterate(f'name ca and {gpcr} and polymer.protein', 'stored.query_seq.append(resn)')
     query_seq = [one_letter.get(stored.query_seq[x], 'X') for x in range(len(stored.query_seq))]
+    print(f"Full sequence: {''.join(query_seq)}")
 
     # and the residue id of each one.
     stored.query_resi = []
@@ -329,6 +332,7 @@ for ix, gpcr in enumerate(all_gpcrs):
     # Load the human sequence and align to the 'query' sequence, which is the PDB model from GPCRDB.
     curdir = dataset_dir.format(gpcr)
     human_seq = np.load(os.path.join(curdir, human_uniprotid[ix]+'_seq.npy'))
+    print(f"Huma sequence: {''.join(human_seq)}")
 
     iface_in_human_seq, _, _= align_seqs(query_aln, human_seq, rinterface=iface_in_query_aln)
 
@@ -338,6 +342,7 @@ for ix, gpcr in enumerate(all_gpcrs):
     resi_string =[str(x+1) for x in iface_in_human_seq if x >= 0]
     resi_string = '+'.join(resi_string)
     cmd.color('orange', f'{gpcr} and resi {resi_string}')
+    continue
 
     if not os.path.exists(outdir):
         os.makedirs(outdir)
