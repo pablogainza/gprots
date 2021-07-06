@@ -18,7 +18,9 @@ for ix, row in df.iterrows():
     cmd.create('align_target', 'chainR')
     cmd.delete('obj01')
 
-    if row['PDB'] != '-':
+    if row['GPCRDB_refined'] != '-':
+        pdbfn = f"input_pdbs/from_gpcrdb_refined/{row['GPCRDB_refined']}"
+    elif row['PDB'] != '-':
         pdbfn = f"input_pdbs/from_pdb/{row['PDB']}"
     elif row['Baker'] != '-':
         pdbfn = f"input_pdbs/from_baker/{row['Baker']}"
