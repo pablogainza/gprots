@@ -2,8 +2,11 @@
 import sys
 sys.path.append('/usr/local/Cellar/pymol/2.4.0_3/libexec/lib')
 sys.path.append('/usr/local/Cellar/pymol/2.4.0_3/libexec/lib/python3.9/site-packages')
+sys.path.append('../source/')
 # First line should point to pymol path.  
 from pymol import cmd, stored
+from three_to_one import one_letter
+from scipy.spatial import cKDTree
 
 import os
 from subprocess import Popen, PIPE
@@ -14,19 +17,22 @@ import pandas as pd
 # set the iface cutoff
 iface_cutoff = 8
 
+# use Pymol's cealign instead of standard align? 
+# CEalign has the problem of determining which residues correspond to each other. 
+use_cealign = False
+
 # Read the ground truth.
 gtdf = pd.read_csv('../ground_truth.csv')
 
 # Read the PDB of the template structure - for now 7jvq.
 cmd.load('7jvq.pdb', 'template')
-cmd.select('Rchain', 'template and chain R')
-cmd.create('templateR', 'Rchain') 
 
 # one_letter["SER"] will now return "S"
-one_letter ={'VAL':'V', 'ILE':'I', 'LEU':'L', 'GLU':'E', 'GLN':'Q', \
-        'ASP':'D', 'ASN':'N', 'HIS':'H', 'TRP':'W', 'PHE':'F', 'TYR':'Y',    \
-        'ARG':'R', 'LYS':'K', 'SER':'S', 'THR':'T', 'MET':'M', 'ALA':'A',    \
-        'GLY':'G', 'PRO':'P', 'CYS':'C', 'CLR': '', 'PLM': ''}
+#one_letter ={'VAL':'V', 'ILE':'I', 'LEU':'L', 'GLU':'E', 'GLN':'Q', \
+#        'ASP':'D', 'ASN':'N', 'HIS':'H', 'TRP':'W', 'PHE':'F', 'TYR':'Y',    \
+#        'ARG':'R', 'LYS':'K', 'SER':'S', 'THR':'T', 'MET':'M', 'ALA':'A',    \
+#        'GLY':'G', 'PRO':'P', 'CYS':'C', 'CLR': '', 'PLM': '', 'SRO': '', \
+#        'HVU': '', 'HSM': '', 'KCA': ''}
 
 
 def getIfaceInQuery(align_fn, gpcr_name, iface_ix): 
@@ -186,20 +192,29 @@ def align_seqs(rseq, qseq, rinterface):
     return iface_in_query, sequence_identity, qiface_seq
 
 # Compute the interface residues, size N, of the template structure and label them. 
-cmd.select('iface_res', f'template and byRes((chain A or chain B) around {iface_cutoff})')
+cmd.select('iface_res', f'polymer.protein and template and byRes((chain A or chain B) around {iface_cutoff})')
 cmd.select('ifaceR', f'iface_res and chain R')
+# Color iface orange for easier visualization.
+cmd.color('orange', 'ifaceR')
 stored.iface = []
 cmd.iterate('ifaceR and name ca', 'stored.iface.append(resi)')
 
+cmd.select('Rchain', 'template and chain R')
+cmd.create('templateR', 'Rchain') 
+
 # Compute the sequence of the template.
 stored.template_seq = []
-cmd.iterate('name ca and templateR', 'stored.template_seq.append(resn)')
-template_seq = [one_letter[stored.template_seq[x]] for x in range(len(stored.template_seq))]
+cmd.iterate('name ca and templateR and polymer.protein', 'stored.template_seq.append(resn)')
+template_seq = [one_letter.get(stored.template_seq[x], 'X') for x in range(len(stored.template_seq))]
 
 # and the residue id of each one.
 stored.template_resi = []
-cmd.iterate('name ca and templateR', 'stored.template_resi.append(resi)')
+cmd.iterate('name ca and templateR and polymer.protein', 'stored.template_resi.append(resi)')
 template_resi = stored.template_resi
+
+# add the xyz of each atom.
+stored.template_xyz = []
+cmd.iterate_state(0, 'name ca and templateR and polymer.protein', 'stored.template_xyz.append((x,y,z))')
 
 assert(len(stored.template_resi) == len(stored.template_seq))
 
@@ -214,48 +229,102 @@ iface_seq_templ = [template_seq[x] for x in iface_ix]
 # Pretrained data directory:
 dataset_dir = '../uniref/{}/in_data/'
 
-all_gpcrs = gtdf['GeneName'].tolist()
+all_gpcrs = gtdf['HGNC'].tolist()
 human_uniprotid = gtdf['UniprotAcc'].tolist()
 pdb_names= gtdf['PDB'].tolist()
+all_classes= gtdf['Class'].tolist()
 
 # For each GPCR in our dataset 
 for ix, gpcr in enumerate(all_gpcrs):
-    if gpcr == 'PTGDR':
-        print("Ignoring PTGDR for now") 
+    outdir = f'generated_indices/{gpcr}'
+    if all_classes[ix] != 'A':
+        continue
+    if os.path.exists(outdir):
         continue
 
     # Read the PDB of the corresponding human GPCR
-    cmd.load(f'../data01_gpcrs/{pdb_names[ix]}', gpcr)
+    cmd.load(f'../data01_gpcrs/aligned_renamed_pdbs/{gpcr}.pdb', gpcr)
 
-    # Compute the sequence of the template.
+    # Compute the sequence of the query.
     stored.query_seq = []
-    cmd.iterate(f'name ca and {gpcr}', 'stored.query_seq.append(resn)')
-    query_seq = [one_letter[stored.query_seq[x]] for x in range(len(stored.query_seq))]
+    cmd.iterate(f'name ca and {gpcr} and polymer.protein', 'stored.query_seq.append(resn)')
+    query_seq = [one_letter.get(stored.query_seq[x], 'X') for x in range(len(stored.query_seq))]
 
-    # Use Pymol to align the human GPCR to the template. 
-    align_ret = cmd.align(gpcr, 'templateR', object=f'aln_{gpcr}')
+    # and the residue id of each one.
+    stored.query_resi = []
+    cmd.iterate(f'name ca and {gpcr} and polymer.protein', 'stored.query_resi.append(resi)')
 
-    # Assert that the alignment RMSD < 10.0
-    print(f"{gpcr} RMSD: {align_ret[0]}, atoms after: {align_ret[1]}, atoms before: {align_ret[4]}")
-    
+    if use_cealign: 
+        # Use Pymol's align  to align the human GPCR to the template. 
+#        print(f"{gpcr} RMSD: {align_ret[0]}, atoms after: {align_ret[1]}, atoms before: {align_ret[4]}")
 
-    # Mark the interface residues in the aligned PDB to correspond exactly to those in the template. 
-    # It is very important here that if there are gaps in this GPCR (i.e. interface residues not present)
-    # Then the gaps are preserved. For this we preserve the dash.
-    cmd.save(f'/tmp/{gpcr}.aln',f'aln_{gpcr}')
+        # Use Pymol's cealign  to align the human GPCR to the template. 
+        print(f'{gpcr}')
+        cmd.cealign('ifaceR',gpcr, object=f'aln_{gpcr}', quiet=0)
 
-    # We now need a mapping from the residues in the interface of the template to those in the 
-    # new GPCR. 
-    query_aln, iface_in_query_aln = getIfaceInQuery(f'/tmp/{gpcr}.aln', gpcr, iface_ix)
+        # Get the CA x,y,z for every residue in the query_gpcr
+        stored.query_xyz = []
+        cmd.iterate_state(0, f'name ca and {gpcr} and polymer.protein', 'stored.query_xyz.append((x,y,z))')
 
-    # Print how many are identical to the template.
-    print(''.join(np.asarray(template_seq)[iface_ix]))
-    print(''.join(np.asarray(query_aln)[iface_in_query_aln]))
-    count_identical = 0.0
-    for i in range(len(iface_ix)):
-        if np.asarray(template_seq)[iface_ix][i] == np.asarray(query_aln)[iface_in_query_aln][i]:
-            count_identical+=1 
-    print('count_identical: {:.2f}'.format(count_identical/len(iface_ix)))
+        # Find the nearest CA in the query to each residue in the template interface.
+        qxyz = np.array(stored.query_xyz)
+        print(qxyz.shape)
+        txyz = np.array(stored.template_xyz)
+        print(txyz.shape)
+
+        
+        kdt = cKDTree(qxyz)
+        d, map_template_to_query = kdt.query(txyz)
+
+        # map the template interface to the closest residue within in the residue 5.0A. If no residue is within 5.0A, set to zero.
+        query_iface_resi = []
+        query_iface_seq = []
+        for i in range(len(txyz)):
+            if template_resi[i] in stored.iface: 
+                if d[i] < 5.0:
+                    qif = np.array(stored.query_resi)[map_template_to_query[i]]
+                    query_iface_resi.append(qif)
+                    query_iface_seq.append(query_seq[map_template_to_query[i]])
+                else:
+                    query_iface_resi.append(-1)
+                    query_iface_seq.append('*')
+
+
+        # Print how many are identical to the template.
+        print(''.join(np.asarray(template_seq)[iface_ix]))
+        print(''.join(np.asarray(query_iface_seq)))
+        count_identical = 0.0
+        for i in range(len(iface_ix)):
+            if np.asarray(template_seq)[iface_ix][i] == query_iface_seq[i]:
+                count_identical+=1 
+        print('count_identical: {:.2f}'.format(count_identical/len(iface_ix)))
+
+    else: 
+        # Use Pymol's align  to align the human GPCR to the template. 
+        align_ret = cmd.align(gpcr, 'templateR', object=f'aln_{gpcr}')
+
+        # Assert that the alignment RMSD < ?.0
+        print(f"{gpcr} RMSD: {align_ret[0]}, atoms after: {align_ret[1]}, atoms before: {align_ret[4]}")
+
+
+
+        # Mark the interface residues in the aligned PDB to correspond exactly to those in the template. 
+        # It is very important here that if there are gaps in this GPCR (i.e. interface residues not present)
+        # Then the gaps are preserved. For this we preserve the dash.
+        cmd.save(f'/tmp/{gpcr}.aln',f'aln_{gpcr}')
+
+        # We now need a mapping from the residues in the interface of the template to those in the 
+        # new GPCR. 
+        query_aln, iface_in_query_aln = getIfaceInQuery(f'/tmp/{gpcr}.aln', gpcr, iface_ix)
+
+        # Print how many are identical to the template.
+        print(''.join(np.asarray(template_seq)[iface_ix]))
+        print(''.join(np.asarray(query_aln)[iface_in_query_aln]))
+        count_identical = 0.0
+        for i in range(len(iface_ix)):
+            if np.asarray(template_seq)[iface_ix][i] == np.asarray(query_aln)[iface_in_query_aln][i]:
+                count_identical+=1 
+        print('count_identical: {:.2f}'.format(count_identical/len(iface_ix)))
 
     # Load the human sequence and align to the 'query' sequence, which is the PDB model from GPCRDB.
     curdir = dataset_dir.format(gpcr)
@@ -270,7 +339,6 @@ for ix, gpcr in enumerate(all_gpcrs):
     resi_string = '+'.join(resi_string)
     cmd.color('orange', f'{gpcr} and resi {resi_string}')
 
-    outdir = f'generated_indices/{gpcr}'
     if not os.path.exists(outdir):
         os.makedirs(outdir)
 
