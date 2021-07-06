@@ -15,15 +15,9 @@ echo FINISHED at `date`
 
 source /work/upcorreia/bin/load_masif_environment_gpu.sh
 i=1
-while read p; do
-    if [ $(( i % 1001 )) == ${SLURM_ARRAY_TASK_ID} ]; then
-        python3 -W ignore train_classifier.py $p gnaoAmp
-        python3 -W ignore train_classifier.py $p gnaqAmp
-        python3 -W ignore train_classifier.py $p gna15Amp
-        python3 -W ignore train_classifier.py $p gnas2Amp
-        python3 -W ignore train_classifier.py $p gnas13Amp
-    fi
-    i=$((i+1))
-done < lists/gpcr_list.txt
-
+python3 -W ignore train_classifier.py $p gnaoAmp
+python3 -W ignore train_classifier.py $p gnaqAmp
+python3 -W ignore train_classifier.py $p gna15Amp
+python3 -W ignore train_classifier.py $p gnas2Amp
+python3 -W ignore train_classifier.py $p gnas13Amp
 
