@@ -188,8 +188,6 @@ def align_seqs(rseq, qseq, rinterface):
 
     sequence_identity = max(seq_id(raln, qaln), seq_id(qaln, raln))
     print(f"Sequence identity: {seq_id(raln,qaln)}, {seq_id(qaln, raln)}")
-    if seq_id(raln, qaln) <0.95:
-        set_trace()
 
     return iface_in_query, sequence_identity, qiface_seq
 
@@ -241,8 +239,8 @@ for ix, gpcr in enumerate(all_gpcrs):
     outdir = f'generated_indices/{gpcr}'
     if all_classes[ix] != 'A':
         continue
-#    if os.path.exists(outdir):
-#        continue
+    if os.path.exists(outdir):
+        continue
 
     # Read the PDB of the corresponding human GPCR
     cmd.load(f'../data01_gpcrs/aligned_renamed_pdbs/{gpcr}.pdb', gpcr)
@@ -342,7 +340,6 @@ for ix, gpcr in enumerate(all_gpcrs):
     resi_string =[str(x+1) for x in iface_in_human_seq if x >= 0]
     resi_string = '+'.join(resi_string)
     cmd.color('orange', f'{gpcr} and resi {resi_string}')
-    continue
 
     if not os.path.exists(outdir):
         os.makedirs(outdir)
