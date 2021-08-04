@@ -1,0 +1,10 @@
+ROC AUC gna15Amp = 0.828
+Accuracy gna15Amp = 0.782
+ROC AUC gnas13Amp = 0.795
+Accuracy gnas13Amp = 0.818
+ROC AUC gnaqAmp = 0.956
+Accuracy gnaqAmp = 0.886
+ROC AUC gnas2Amp = 0.854
+Accuracy gnas2Amp = 0.841
+ROC AUC gnaoAmp = 0.745
+Accuracy gnaoAmp = 0.745
