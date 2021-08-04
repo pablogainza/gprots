@@ -1,0 +1,5 @@
+ROC AUC gna15Amp = 0.828
+ROC AUC gnas13Amp = 0.795
+ROC AUC gnaqAmp = 0.956
+ROC AUC gnas2Amp = 0.854
+ROC AUC gnaoAmp = 0.745

@@ -1,0 +1,10 @@
+ROC AUC gnaqAct = 0.934
+Accuracy gnaqAct = 0.886
+ROC AUC gna15Act = 0.783
+Accuracy gna15Act = 0.873
+ROC AUC gnas2Act = 0.919
+Accuracy gnas2Act = 0.891
+ROC AUC gnaoAct = 0.873
+Accuracy gnaoAct = 0.786
+ROC AUC gnas13Act = 0.960
+Accuracy gnas13Act = 0.977
