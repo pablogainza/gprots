@@ -38,7 +38,9 @@ with open('matrix.txt') as f:
 
 
 file_strong_act = open('baseline_strong_activation.csv','w+')
-file_bin_amp= open('baseline_binary_ampliture.csv','w+')
+file_strong_act.write ('GPCR_NAME,gnaoAct,gnaqAct,gna15Act,gnas2Act,gnas13Act\n')
+file_bin_amp= open('baseline_binary_amplitude.csv','w+')
+file_bin_amp.write ('GPCR_NAME,gnaoAmp,gnaqAmp,gna15Amp,gnas2Amp,gnas13Amp\n')
 file_3level_act= open('baseline_3_levels_activation.csv','w+')
 
 for iiii, row in testset.iterrows():
@@ -86,15 +88,15 @@ for iiii, row in testset.iterrows():
         print(f"Most similar to {row['HGNC']} is {trainrow['HGNC'].tolist()[0]} with {max_identity}")
 
 
-    pred = np.mean(strong_activation, axis=0)
+    pred = np.round(np.mean(strong_activation, axis=0))
     pred= np.squeeze(pred)
     file_strong_act.write(f"{name},{pred[0]},{pred[1]},{pred[2]},{pred[3]},{pred[4]}\n")
 
-    pred = np.mean(binary_amplitude, axis=0)
+    pred = np.round(np.mean(binary_amplitude, axis=0))
     pred= np.squeeze(pred)
     file_bin_amp.write(f"{name},{pred[0]},{pred[1]},{pred[2]},{pred[3]},{pred[4]}\n")
 
-    pred = np.mean(three_level_activation, axis=0)
+    pred = np.round(np.mean(three_level_activation, axis=0))
     pred= np.squeeze(pred)
     file_3level_act.write(f"{name},{pred[0]},{pred[1]},{pred[2]},{pred[3]},{pred[4]}\n")
     
