@@ -1,4 +1,4 @@
-# Use matrix.txt to make clusters of strict splits.
+# Use matrix.txt to make clusters of strict splits, including testing, training and validation.
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 import pandas as pd
@@ -56,17 +56,39 @@ for i in range(len(clustering.labels_)):
 # Split into training/testing
 cluster_list = np.unique(clustering.labels_)
 np.random.shuffle(cluster_list)
-set1 = cluster_list[0:(len(cluster_list)//2)]
-set2 = cluster_list[len(cluster_list)//2:]
-# Training is the bigger cluster, testing the smaller one. 
-len_set1 = len([x for x in clustering.labels_ if x in set1])
-len_set2 = len([x for x in clustering.labels_ if x in set2])
-if len_set1 > len_set2: 
-    training_labels = set1
-    testing_labels = set2
-else: 
-    training_labels = set2
-    testing_labels = set1
+
+# Training will be clusters adding to < 60% of the set, validation < 20% and testing the remaining ones.
+# Validation: 
+n = len(clustering.labels_)
+validation_labels = []
+for clust in cluster_list: 
+    len_set = len([x for x in clustering.labels_ if x in validation_labels or x == clust])
+    if len_set < n*0.20:
+        validation_labels.append(clust)
+    elif len_set < n*0.30:
+        validation_labels.append(clust)
+        break
+    else:
+        break
+
+# Training will be clusters adding to < 60% of the set, validation < 20% and testing the remaining ones.
+training_labels = []
+for clust in cluster_list: 
+    if clust not in validation_labels:
+        len_trainset = len([x for x in clustering.labels_ if x in training_labels or x == clust])
+        if len_trainset < n*0.60:
+            training_labels.append(clust)
+        elif len_trainset < n*0.70:
+            training_labels.append(clust)
+            break
+        else:
+            break
+
+# Testing: 
+testing_labels = []
+for clust in cluster_list: 
+    if clust not in training_labels and clust not in validation_labels: 
+        testing_labels.append(clust)
 
 # Find the maximum identity between training and testing. 
 for ix_test, name_test in enumerate(protein_list): 
@@ -84,6 +106,8 @@ for ix_test, name_test in enumerate(protein_list):
 
 count_test = 0 
 count_train = 0
+count_val = 0
+
 with open(f'lists/testing{output_index}.txt', 'w+') as f:
     for ix_test, name_test in enumerate(protein_list): 
         if clustering.labels_[ix_test] in testing_labels: 
@@ -101,6 +125,15 @@ with open(f'lists/training{output_index}.txt', 'w+') as f:
             f.write(hgnc.values[0]+'\n')
             count_train +=1
 
+with open(f'lists/validation{output_index}.txt', 'w+') as f:
+    for ix_val, name_val in enumerate(protein_list): 
+        if clustering.labels_[ix_val] in validation_labels: 
+            hgnc = ground_truth[ground_truth['UniprotName'] == name_val] 
+            hgnc = hgnc['HGNC']
+            f.write(hgnc.values[0]+'\n')
+            count_val +=1
+
 print(f'Count test: {count_test}')
 print(f'Count train: {count_train}')
+print(f'Count val: {count_val}')
 
