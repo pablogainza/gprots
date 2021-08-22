@@ -43,6 +43,6 @@ for ix, row in df.iterrows():
 
     cmd.cealign('align_target', 'src', quiet=0)
 #    print(f"RMSD {row['HGNC']} = {ret[0]}")
-#    cmd.alter('src', 'chain=\"R\"')
+    cmd.alter('src', 'chain=\"R\"')
     cmd.save('aligned_renamed_pdbs/{}.pdb'.format(row['HGNC']), 'src')
 
