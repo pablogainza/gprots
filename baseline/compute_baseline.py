@@ -76,36 +76,33 @@ for iiii, row in testset.iterrows():
     # prediction task 3: predict three levels of activation
     three_level_activation = []
 
-    # To simulate our NN, we do 10 runs with different trainset uniprot ids, removing 8 each time, and average the predictions.
-    for run in range(10):
-        np.random.shuffle(trainset_uniprot_ids)
-        cur_trainset = trainset_uniprot_ids[:41]
-        # Find the most similar sequence in the trainset. 
-        max_identity = 0.0
-        most_similar = ''
-        for uidtrain in cur_trainset:
-            if uid_test_to_train[uid][uidtrain] > max_identity:
-                most_similar = uidtrain
-                max_identity = uid_test_to_train[uid][uidtrain] 
-        trainrow = trainset[trainset['UniprotAcc'] == most_similar]
+    cur_trainset = trainset_uniprot_ids
+    # Find the most similar sequence in the trainset. 
+    max_identity = 0.0
+    most_similar = ''
+    for uidtrain in cur_trainset:
+        if uid_test_to_train[uid][uidtrain] > max_identity:
+            most_similar = uidtrain
+            max_identity = uid_test_to_train[uid][uidtrain] 
+    trainrow = trainset[trainset['UniprotAcc'] == most_similar]
 
-        amp_bin = np.array([trainrow['gnaoAmp'], trainrow['gnaqAmp'], trainrow['gna15Amp'], trainrow['gnas2Amp'], trainrow['gnas13Amp']]).astype(np.float)
-        act_strong = np.array([trainrow['gnaoAct'], trainrow['gnaqAct'], trainrow['gna15Act'], trainrow['gnas2Act'], trainrow['gnas13Act']]).astype(np.float)
-        act_3level= np.array([trainrow['gnaoAct'], trainrow['gnaqAct'], trainrow['gna15Act'], trainrow['gnas2Act'], trainrow['gnas13Act']]).astype(np.float)
+    amp_bin = np.array([trainrow['gnaoAmp'], trainrow['gnaqAmp'], trainrow['gna15Amp'], trainrow['gnas2Amp'], trainrow['gnas13Amp']]).astype(np.float)
+    act_strong = np.array([trainrow['gnaoAct'], trainrow['gnaqAct'], trainrow['gna15Act'], trainrow['gnas2Act'], trainrow['gnas13Act']]).astype(np.float)
+    act_3level= np.array([trainrow['gnaoAct'], trainrow['gnaqAct'], trainrow['gna15Act'], trainrow['gnas2Act'], trainrow['gnas13Act']]).astype(np.float)
 
-        amp_bin[amp_bin > 0]  = 1.0
+    amp_bin[amp_bin > 0]  = 1.0
 
-        act_strong[act_strong <30] = 0 
-        act_strong[act_strong >= 30] = 1.0
+    act_strong[act_strong <30] = 0 
+    act_strong[act_strong >= 30] = 1.0
 
-        act_3level[(act_3level < 30) & (act_3level > 0)] = 1.0        
-        act_3level[act_3level >= 30] = 2.0        
+    act_3level[(act_3level < 30) & (act_3level > 0)] = 1.0        
+    act_3level[act_3level >= 30] = 2.0        
 
-        binary_amplitude.append(amp_bin)
-        strong_activation.append(act_strong)
-        three_level_activation.append(act_3level)
+    binary_amplitude.append(amp_bin)
+    strong_activation.append(act_strong)
+    three_level_activation.append(act_3level)
 
-        print(f"Most similar to {row['HGNC']} is {trainrow['HGNC'].tolist()[0]} with {max_identity}")
+    print(f"Most similar to {row['HGNC']} is {trainrow['HGNC'].tolist()[0]} with {max_identity}")
 
 
     #pred = np.round(np.mean(strong_activation, axis=0))
