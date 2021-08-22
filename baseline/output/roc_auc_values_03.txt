@@ -1,6 +1,6 @@
-Overall ROC AUC strong activation 0.498
-gnaoAct 0.6052631578947368
-gnaqAct 0.46354166666666663
+Overall ROC AUC strong activation 0.525
+gnaoAct 0.5789473684210527
+gnaqAct 0.4791666666666667
 gna15Act N/D
 gnas2Act N/D
 gnas13Act 0.5

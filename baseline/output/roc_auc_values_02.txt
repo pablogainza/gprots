@@ -1,8 +1,8 @@
-Overall ROC AUC strong activation 0.595
-gnaoAct 0.4461805555555556
-gnaqAct 0.3577777777777778
-gna15Act 0.6033653846153846
-gnas2Act 0.7022222222222222
+Overall ROC AUC strong activation 0.591
+gnaoAct 0.4722222222222222
+gnaqAct 0.45111111111111113
+gna15Act 0.576923076923077
+gnas2Act 0.6777777777777778
 gnas13Act 0.5
 Overall ROC AUC binary amplitude 0.659
 gnaoAmp 0.5
