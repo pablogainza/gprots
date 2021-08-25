@@ -20,10 +20,36 @@ from tensorflow.keras.layers import Flatten
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Embedding
 from tensorflow.keras.layers import LSTM
+from sklearn.preprocessing import OneHotEncoder
 
 import numpy as np
 import os
 import sys
+
+aa_to_int = {
+    'A': 0,
+    'C': 1,
+    'D': 2,
+    'E': 3,
+    'F': 4,
+    'G': 5,
+    'H': 6,
+    'I': 7,
+    'K': 8,
+    'L': 9,
+    'M': 10,
+    'N': 11,
+    'P': 12,
+    'Q': 13,
+    'R': 14,
+    'S': 15,
+    'T': 16,
+    'V': 17,
+    'W': 18,
+    'Y': 19,
+    'X': 20
+}
+
 
 # Make a generator class. 
     # In each epoch we randomly select 50 sequences for training. 
@@ -31,7 +57,7 @@ import sys
     # Go through every training instance. 
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
-    def __init__(self, gpcrs, human_acc, ground_truth_gpcrs, batch_size=32, seqid_cutoff=0.5, human_only=False, shuffle_indexes=True):
+    def __init__(self, gpcrs, human_acc, ground_truth_gpcrs, use_pretrained_embeddings=False, batch_size=32, seqid_cutoff=0.5, human_only=False, shuffle_indexes=True):
         '''
             Load all data into memory
         '''
@@ -62,8 +88,17 @@ class DataGenerator(keras.utils.Sequence):
                 # Check that it passes the cutoff but always include the human accession.
                 if seq_id > seqid_cutoff or acc == human_acc[gpcr]:
                     # Load features only for the indices that are in the interface. 
-                    feat = np.load(os.path.join(data_dir.format(gpcr), acc+'_feat.npy'))[iface_ix]
-                    feat[zero_cols,:] = 0
+                    if use_pretrained_embeddings:
+                        feat = np.load(os.path.join(data_dir.format(gpcr), acc+'_feat.npy'))[iface_ix]
+                        feat[zero_cols,:] = 0
+                    else:
+                        seq = np.load(os.path.join(data_dir.format(gpcr), acc+'_seq.npy'))[iface_ix]
+                        seq = [aa_to_int[x] for x in seq]
+                        feat = np.zeros((len(seq), len(aa_to_int.keys())))
+                        # one hot encoding.
+                        for i in range(len(seq)): 
+                            feat[i,seq[i]] = 1.0
+                        feat[zero_cols,:] = 0
                     self.X.append(feat)
                     ground_truth = ground_truth_gpcrs[gpcr]
                     if ground_truth == '?':
@@ -88,6 +123,9 @@ class DataGenerator(keras.utils.Sequence):
         'number of batches per epoch'
         return int(np.floor(len(self.indexes) / self.batch_size))
 
+    def __getInputShape__ (self):
+        return self.X[0].shape
+
     def __getitem__(self, index):
         'Generate one batch of data'
         # Data is augmented as it is sampled every time. 
@@ -98,19 +136,31 @@ class DataGenerator(keras.utils.Sequence):
         Yitem = np.array([self.Y[ix] for ix in indexes])
 
         return Xitem, Yitem
+
+gprotein = sys.argv[1]
+run_id = sys.argv[2]
+use_DNN = int(sys.argv[3])
+use_pretrained_embeddings = int(sys.argv[4]) 
+use_human_only = int(sys.argv[5])
+out_fn = f'predictions_binary_act/{gprotein}/test_{run_id}_DNNx{use_DNN}_PRETRAINx{use_pretrained_embeddings}xHUMANONLYx{use_human_only}.csv'
+if not os.path.exists(f'predictions_binary_act/{gprotein}'):
+    os.makedirs(f'predictions_binary_act/{gprotein}')
           
 test_gpcr = []
-with open('lists/testing01.txt') as f:
+with open(f'lists/testing{int(run_id):02}.txt') as f:
     for line in f.readlines():
         test_gpcr.append(line.rstrip())
 
 all_train_gpcr = []
-with open('lists/training01.txt') as f:
+with open(f'lists/training{int(run_id):02}.txt') as f:
     for line in f.readlines():
         all_train_gpcr.append(line.rstrip())
 
-gprotein = sys.argv[1]
-run_id = sys.argv[2]
+all_val_gpcr = []
+with open(f'lists/validation{int(run_id):02}.txt') as f:
+    for line in f.readlines():
+        all_val_gpcr.append(line.rstrip())
+
 
 # Load the ground truth.
 gtdf = pd.read_csv('../ground_truth.csv')
@@ -127,111 +177,89 @@ for ix, gpcr in enumerate(all_gpcrs):
 
 np.random.shuffle(all_train_gpcr)
 
-training_gpcrs = all_train_gpcr[0:38]
-val_gpcrs= all_train_gpcr[38:]
+training_gpcrs = all_train_gpcr
+val_gpcrs= all_val_gpcr
 print(f'Total number of training gpcrs: {len(all_train_gpcr)}')
 
 
 
 # Define generator for validation and for training (possibly, mix ?) 
-training_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, batch_size=32, seqid_cutoff=0.5, shuffle_indexes=True,  human_only=False)
-val_generator = DataGenerator(val_gpcrs, human_acc, groundtruth, batch_size=8, seqid_cutoff=0.8, shuffle_indexes=True, human_only=False)
+training_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, use_pretrained_embeddings=use_pretrained_embeddings, batch_size=32, seqid_cutoff=0.5, shuffle_indexes=True,  human_only=use_human_only)
+val_generator = DataGenerator(val_gpcrs, human_acc, groundtruth, use_pretrained_embeddings=use_pretrained_embeddings, batch_size=8, seqid_cutoff=0.8, shuffle_indexes=True, human_only=use_human_only)
 print(f'validation: {len(val_gpcrs)}')
-val_human_generator = DataGenerator(val_gpcrs, human_acc, groundtruth, batch_size=128, seqid_cutoff=0.8, human_only=True, shuffle_indexes=False)
-print(f'training: {len(training_gpcrs)}')
-train_human_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, batch_size=128, seqid_cutoff=0.8, human_only=True, shuffle_indexes=False)
-print(f'testing: {test_gpcr}')
-test_generator = DataGenerator(test_gpcr, human_acc, groundtruth, batch_size=60, seqid_cutoff=0.5, human_only=True, shuffle_indexes=False)
+test_generator = DataGenerator(test_gpcr, human_acc, groundtruth, use_pretrained_embeddings=use_pretrained_embeddings, batch_size=128, seqid_cutoff=0.5, human_only=True, shuffle_indexes=False)
 
-LR = 0.0009 # maybe after some (10-15) epochs reduce it to 0.0008-0.0007
-drop_out = 0.38
-batch_dim = 64
+if use_DNN:
+    LR = 0.0009 # maybe after some (10-15) epochs reduce it to 0.0008-0.0007
+    drop_out = 0.38
+    batch_dim = 64
+    input_shape = training_generator.__getInputShape__()
 
-model = Sequential()
-model.add(Input(shape=(79,1024)))
-model.add(Dropout(drop_out))
-model.add(Dense(128, activation='relu'))
-model.add(BatchNormalization())
-model.add(Dropout(drop_out))
-model.add(Dense(16, activation='relu'))
-model.add(BatchNormalization())
-model.add(Dropout(drop_out))
-model.add(Flatten())
-model.add(Dense(128, activation='relu'))
-model.add(BatchNormalization())
-model.add(Dropout(drop_out))
-# Reduce to one.
-model.add(Dense(32, activation='relu'))
-model.add(BatchNormalization())
-model.add(Dropout(drop_out))
-model.add(Dense(4, activation='relu'))
-model.add(BatchNormalization())
-model.add(Dense(1, activation = 'sigmoid'))
+    model = Sequential()
+    model.add(Input(shape=(input_shape)))
+    model.add(Dropout(drop_out))
+    model.add(Dense(128, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dropout(drop_out))
+    model.add(Dense(16, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dropout(drop_out))
+    model.add(Flatten())
+    model.add(Dense(128, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dropout(drop_out))
+    # Reduce to one.
+    model.add(Dense(32, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dropout(drop_out))
+    model.add(Dense(4, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dense(1, activation = 'sigmoid'))
 
-opt = optimizers.Adam(lr=LR)
+    opt = optimizers.Adam(lr=LR)
 
-model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['binary_crossentropy', 'accuracy'])
-#model.summary()
+    model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['binary_crossentropy', 'accuracy'])
+    #model.summary()
 
-checkpoint = ModelCheckpoint(f'models/weights_learn_activation_{gprotein}_{run_id}.hdf5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
-callbacks_list = [checkpoint]
-history = model.fit_generator(generator=training_generator, epochs=32, validation_data=val_generator, callbacks=callbacks_list)
+    checkpoint = ModelCheckpoint(f'models/weights_learn_activation_{gprotein}_{run_id}_{use_DNN}_{use_pretrained_embeddings}_{use_human_only}.hdf5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+    callbacks_list = [checkpoint]
+    history = model.fit_generator(generator=training_generator, epochs=100, validation_data=val_generator, callbacks=callbacks_list)
 
-# Load best model
-model.load_weights(f'models/weights_learn_activation_{gprotein}_{run_id}.hdf5')
+    # Load best model
+    model.load_weights(f'models/weights_learn_activation_{gprotein}_{run_id}_{use_DNN}_{use_pretrained_embeddings}_{use_human_only}.hdf5')
 
-# Compute human predictions on validation set.
-val_input, ytrue = val_human_generator.__getitem__(0)
-result = model.predict(val_input)
+    # Compute human predictions on test (hidden) set 
+    test_input, ytrue = test_generator.__getitem__(0)
+    result = model.predict(test_input)
 
-# Save validation results
-if not os.path.exists(f'predictions_binary_act/{gprotein}/'):
-    os.makedirs(f'predictions_binary_act/{gprotein}/')
-with open('predictions_binary_act/{}/val_{}.csv'.format(gprotein, run_id), 'w+') as f: 
-    f.write('gene,ypred,ytrue\n')
-    for ix in range(len(result)):
-        f.write(f'{val_gpcrs[ix]},{result[ix][0]},{ytrue[ix]}\n') 
+    with open(out_fn, 'w+') as f: 
+        f.write('gene,ypred\n')
+        for ix in range(len(result)):
+            f.write(f'{test_gpcr[ix]},{result[ix][0],ytrue[ix]}\n') 
 
-# Compute human predictions on test (hidden) set 
-test_input, _ = test_generator.__getitem__(0)
-result = model.predict(test_input)
-
-with open('predictions_binary_act/{}/test_{}.csv'.format(gprotein, run_id), 'w+') as f: 
-    f.write('gene,ypred\n')
-    for ix in range(len(result)):
-        f.write(f'{test_gpcr[ix]},{result[ix][0]}\n') 
-
-# Interpret the predictions.
-if not os.path.exists(f'interpretation_binary_act/{gprotein}/'):
-    os.makedirs(f'interpretation_binary_act/{gprotein}/')
-training_human_embeddings,_ = train_human_generator.__getitem__(0)
-# Now for the hidden set, go through every gpcr and replace each position by a randomly chosen embedding from a different protein
-for gpcr_ix, gpcr in enumerate(test_gpcr):
-    # Make a copy of the predictions for this gpcr and repeat it as many times as residues there are.
-    interpret_copy = np.repeat(np.expand_dims(test_input[gpcr_ix],0), test_input.shape[1],axis=0)
-    # replace each residue embedding input by a randomly chosen one from a member of the training set. 
-    for residue_ix in range(interpret_copy.shape[1]): 
-        random_training_gpcr_ix = np.random.randint(low=0,high=training_human_embeddings.shape[0])
-        interpret_copy[residue_ix][residue_ix] = training_human_embeddings[random_training_gpcr_ix][residue_ix]
-
-    # Evaluate in the NN 
-    result_interpretation = model.predict(interpret_copy)
-
-    # For every result, substract the prediction from the test_input. 
-    delta_difference = result[gpcr_ix] - result_interpretation
-
-    # Open the indices
-    acc = human_acc[gpcr]
-    indices_fn = f'generated_indices/{gpcr}/{acc}_iface_indices.npy'
-    iface_indices = np.load(indices_fn)
-    seq_fn = f'generated_indices/{gpcr}/{acc}_iface_seq.npy'
-    iface_seq = np.load(seq_fn)
-
-    # Save the results to a text file
-    with open('interpretation_binary_act/{}/interpretation_{}_{}'.format(gprotein, gpcr, run_id), 'w+') as f: 
-        for ix in range(delta_difference.shape[0]):
-            f.write(f'{iface_seq[ix]}{iface_indices[ix]}: {np.squeeze(delta_difference[ix])}\n')
 
         
+# Logistic regression, for comparison purposes.
+else:
+    from sklearn.linear_model import LogisticRegression
+    X = []
+    Y = []
+    for k in range(training_generator.__len__()):
+        train_input, ytrue = training_generator.__getitem__(k)
+        X.append(train_input)
+        Y.append(ytrue)
+    X = np.concatenate(X, axis=0)
+    Y = np.concatenate(Y, axis=0)
+    X = np.reshape(X, (X.shape[0], X.shape[1]*X.shape[2]))
+    clf = LogisticRegression().fit(X,Y)
 
+    # Compute human predictions on test (hidden) set 
+    test_input, ytrue = test_generator.__getitem__(0)
+    test_input = np.reshape(test_input, (test_input.shape[0], test_input.shape[1]*test_input.shape[2]))
+    result = clf.predict(test_input)
+
+    with open(out_fn, 'w+') as f: 
+        f.write('gene,ypred\n')
+        for ix in range(len(result)):
+            f.write(f'{test_gpcr[ix]},{result[ix],ytrue[ix]}\n') 
 
