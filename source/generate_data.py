@@ -307,8 +307,6 @@ for ix, gpcr in enumerate(all_gpcrs):
         # Assert that the alignment RMSD < ?.0
         print(f"{gpcr} RMSD: {align_ret[0]}, atoms after: {align_ret[1]}, atoms before: {align_ret[4]}")
 
-
-
         # Mark the interface residues in the aligned PDB to correspond exactly to those in the template. 
         # It is very important here that if there are gaps in this GPCR (i.e. interface residues not present)
         # Then the gaps are preserved. For this we preserve the dash.
