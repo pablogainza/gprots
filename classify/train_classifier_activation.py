@@ -57,10 +57,17 @@ aa_to_int = {
     # Go through every training instance. 
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
-    def __init__(self, gpcrs, human_acc, ground_truth_gpcrs, use_pretrained_embeddings=False, batch_size=32, seqid_cutoff=0.5, human_only=False, shuffle_indexes=True):
+    def __init__(self, gpcrs, human_acc, ground_truth_gpcrs, use_pretrained_embeddings=False, iface_cutoff=4, batch_size=32, seqid_cutoff=0.5, human_only=False, shuffle_indexes=True):
         '''
             Load all data into memory
         '''
+        # Load the distances of each residue to the target. 
+        iface_dists = []
+        with open('iface_distances.txt') as f: 
+            for line in f.readlines(): 
+                iface_dists.append(float(line.rstrip().split(',')[1]))
+        iface_dists = np.array(iface_dists)
+                
         data_dir = '../uniref/{}/in_data/'
         indices_dir= 'generated_indices/{}/'
         self.X = [] 
@@ -82,6 +89,8 @@ class DataGenerator(keras.utils.Sequence):
 
             for acc in selected_acc:
                 iface_ix = np.load(os.path.join(indices_dir.format(gpcr), acc+'_iface_indices.npy'))
+                ## Remove indices those that are farther than iface_cutoff from the Gprotein
+                iface_ix = iface_ix[np.where(iface_dists < iface_cutoff)[0]]
                 zero_cols = np.where(iface_ix < 0)[0]
                 iface_ix[zero_cols] = 0
                 seq_id = np.load(os.path.join(indices_dir.format(gpcr), acc+'_seq_identity.npy'))
