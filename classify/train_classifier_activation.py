@@ -108,9 +108,6 @@ class DataGenerator(keras.utils.Sequence):
                         for i in range(len(seq)): 
                             feat[i,seq[i]] = 1.0
                         feat[zero_cols,:] = 0
-                    # Average over the middle dimension
-                    feat = np.mean(feat, axis = 0)
-                    assert feat.shape == (1024,)
                     self.X.append(feat)
                     ground_truth = ground_truth_gpcrs[gpcr]
                     if ground_truth == '?':
@@ -210,6 +207,13 @@ if use_DNN:
     model = Sequential()
     model.add(Input(shape=(input_shape)))
     model.add(Dropout(drop_out))
+    model.add(Dense(128, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dropout(drop_out))
+    model.add(Dense(16, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dropout(drop_out))
+    model.add(Flatten())
     model.add(Dense(128, activation='relu'))
     model.add(BatchNormalization())
     model.add(Dropout(drop_out))
