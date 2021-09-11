@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --nodes=1
-#SBATCH --time=40:0:0
+#SBATCH --time=2:0:0
 #SBATCH --qos=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
 #SBATCH --partition=gpu
 #SBATCH --mem 32000
-#SBATCH --array=1-39
+#SBATCH --array=20-39
 
 echo STARTING AT `date`
 echo ${SLURM_ARRAY_TASK_ID}

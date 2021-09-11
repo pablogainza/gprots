@@ -108,6 +108,9 @@ class DataGenerator(keras.utils.Sequence):
                         for i in range(len(seq)): 
                             feat[i,seq[i]] = 1.0
                         feat[zero_cols,:] = 0
+                    # Average over the middle dimension
+                    feat = np.mean(feat, axis = 0)
+                    assert feat.shape == (1024,)
                     self.X.append(feat)
                     ground_truth = ground_truth_gpcrs[gpcr]
                     if ground_truth == '?':
@@ -188,8 +191,6 @@ training_gpcrs = all_train_gpcr
 val_gpcrs= all_val_gpcr
 print(f'Total number of training gpcrs: {len(all_train_gpcr)}')
 
-
-
 # Define generator for validation and for training (possibly, mix ?) 
 training_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, use_pretrained_embeddings=use_pretrained_embeddings, batch_size=32, seqid_cutoff=0.5, shuffle_indexes=True,  human_only=use_human_only)
 val_generator = DataGenerator(val_gpcrs, human_acc, groundtruth, use_pretrained_embeddings=use_pretrained_embeddings, batch_size=8, seqid_cutoff=0.8, shuffle_indexes=True, human_only=use_human_only)
@@ -204,14 +205,8 @@ if use_DNN:
 
     model = Sequential()
     model.add(Input(shape=(input_shape)))
+    # Average 
     model.add(Dropout(drop_out))
-    model.add(Dense(128, activation='relu'))
-    model.add(BatchNormalization())
-    model.add(Dropout(drop_out))
-    model.add(Dense(16, activation='relu'))
-    model.add(BatchNormalization())
-    model.add(Dropout(drop_out))
-    model.add(Flatten())
     model.add(Dense(128, activation='relu'))
     model.add(BatchNormalization())
     model.add(Dropout(drop_out))

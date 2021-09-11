@@ -194,6 +194,39 @@ def align_seqs(rseq, qseq, rinterface):
 # Compute the interface residues, size N, of the template structure and label them. 
 cmd.select('iface_res', f'polymer.protein and template and byRes((chain A or chain B) around {iface_cutoff})')
 cmd.select('ifaceR', f'iface_res and chain R')
+
+# Get the distances from AB to each residue in R
+stored.xyzAB = []
+cmd.iterate_state(0, '(chain A or chain B) and template and polymer.protein', 'stored.xyzAB.append([x,y,z])')
+xyzAB = np.array(stored.xyzAB)
+
+stored.xyzR = []
+stored.resiR = []
+stored.resi_unique = []
+cmd.iterate_state(0, 'ifaceR', 'stored.xyzR.append([x,y,z])')
+cmd.iterate_state(0, 'ifaceR', 'stored.resiR.append(resi)')
+cmd.iterate_state(0, 'ifaceR and name ca', 'stored.resi_unique.append(resi)')
+xyzR = np.array(stored.xyzR)
+resiR = stored.resiR
+assert(len(xyzR) == len(resiR))
+set_trace()
+assert(len(set(resiR)) == 79)
+kdt = cKDTree(xyzAB)
+d, r = kdt.query(xyzR)
+iface_distances = []
+for resix in stored.resi_unique: 
+    best_for_resix = float('inf')
+    for ix, resix2 in enumerate(resiR): 
+        if resix == resix2:
+            if d[ix] < best_for_resix: 
+                best_for_resix = d[ix]
+    iface_distances.append(best_for_resix)
+assert(len(iface_distances) == 79)
+with open('iface_distances.txt', 'w+') as f: 
+    for ix, dist in enumerate(iface_distances): 
+        f.write(f'{stored.resi_unique[ix]},{dist:.2f}\n')
+set_trace()
+
 # Color iface orange for easier visualization.
 cmd.color('orange', 'ifaceR')
 stored.iface = []
@@ -224,8 +257,9 @@ for i in range(len(stored.iface)):
     iface_ix.append(stored.template_resi.index(stored.iface[i]))
 
 print('Total: {} residues in interface'.format(len(iface_ix)))
+set_trace()
 iface_seq_templ = [template_seq[x] for x in iface_ix]
-
+set_trace()
 # Pretrained data directory:
 dataset_dir = '../uniref/{}/in_data/'
 
