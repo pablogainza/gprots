@@ -26,6 +26,8 @@ import numpy as np
 import os
 import sys
 
+do_train = False
+
 aa_to_int = {
     'A': 0,
     'C': 1,
@@ -74,6 +76,8 @@ class DataGenerator(keras.utils.Sequence):
         self.names = []
         self.accessions = []
         self.Y = []
+        self.wt_seq = []
+
         for gpcr in gpcrs:
             unique_ids = [x.split('_')[0] for x in os.listdir(indices_dir.format(gpcr)) if x.endswith('iface_indices.npy')] 
             if human_only: 
@@ -97,11 +101,12 @@ class DataGenerator(keras.utils.Sequence):
                 # Check that it passes the cutoff but always include the human accession.
                 if seq_id > seqid_cutoff or acc == human_acc[gpcr]:
                     # Load features only for the indices that are in the interface. 
+                    seq = np.load(os.path.join(data_dir.format(gpcr), acc+'_seq.npy'))[iface_ix]
+                    self.wt_seq.append(np.asarray([iface_ix, seq]).T)
                     if use_pretrained_embeddings:
                         feat = np.load(os.path.join(data_dir.format(gpcr), acc+'_feat.npy'))[iface_ix]
                         feat[zero_cols,:] = 0
                     else:
-                        seq = np.load(os.path.join(data_dir.format(gpcr), acc+'_seq.npy'))[iface_ix]
                         seq = [aa_to_int[x] for x in seq]
                         feat = np.zeros((len(seq), len(aa_to_int.keys())))
                         # one hot encoding.
@@ -148,6 +153,11 @@ class DataGenerator(keras.utils.Sequence):
         Yitem = np.array([self.Y[ix] for ix in indexes])
 
         return Xitem, Yitem
+
+    
+    # Get the entire set of features, and the ground_truth.
+    def getEntireSet(self):
+        return np.array(self.X), self.Y, self.wt_seq
 
 # use act_or_amp? 
 act_or_amp = sys.argv[1]
@@ -234,13 +244,14 @@ if use_DNN:
 
     checkpoint = ModelCheckpoint(f'models/weights_learn_amplitude_{act_or_amp}_{run_id}_{use_DNN}_{use_pretrained_embeddings}_{use_human_only}.hdf5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
     callbacks_list = [checkpoint]
-    history = model.fit_generator(generator=training_generator, epochs=100, validation_data=val_generator, callbacks=callbacks_list)
+    if do_train: 
+        history = model.fit_generator(generator=training_generator, epochs=100, validation_data=val_generator, callbacks=callbacks_list)
 
     # Load best model
     model.load_weights(f'models/weights_learn_amplitude_{act_or_amp}_{run_id}_{use_DNN}_{use_pretrained_embeddings}_{use_human_only}.hdf5')
 
     # Compute human predictions on test (hidden) set 
-    test_input, ytrue = test_generator.__getitem__(0)
+    test_input, ytrue,wt_seq_test = test_generator.getEntireSet()
     result = model.predict(test_input)
 
     with open(out_fn, 'w+') as f: 
@@ -258,6 +269,50 @@ if use_DNN:
             for gprot_ix in range(len(result[ix])):
                 f.write(f',{ytrue[ix][gprot_ix]}') 
             f.write('\n')
+
+    # Now load the entire training set to do point mutants across the interface. 
+    train_input, _, wt_seq_train = training_generator.getEntireSet()
+    mutants_to_go = {}
+    mutants_to_gq = {}
+    mutants_to_gs = {}
+    # For each protein in the input set, we will do 20 mutants at each position, randomly chosen. 
+    for ix, gpcr in enumerate(test_gpcr): 
+        for mut_ix in range(20): 
+            mutant_test_input = []
+            mutant_aa_identity = []
+            for iface_res_ix in range(test_input.shape[1]): 
+                tmp_mutant = test_input[ix].copy()
+                random_train_input = np.random.choice(len(train_input))
+                tmp_mutant[iface_res_ix] = train_input[random_train_input][iface_res_ix]
+                mutant_test_input.append(tmp_mutant)
+                mutant_aa_identity.append(wt_seq_train[random_train_input][iface_res_ix][1])
+            mutant_test_input = np.array(mutant_test_input)
+            result_mutant = model.predict(mutant_test_input)
+            # Subtract the mutant. 
+            diff = result_mutant - result[ix]
+            if gpcr not in mutants_to_go:
+                mutants_to_go[gpcr] = []
+                mutants_to_gq[gpcr] = []
+                mutants_to_gs[gpcr] = []
+   
+            mutants_to_go[gpcr].extend( [(wt_seq_test[ix][x][1],wt_seq_test[ix][x][0],mutant_aa_identity[x],diff[x][0]) for x in range(len(diff))])
+            mutants_to_gq[gpcr].extend( [(wt_seq_test[ix][x][1],wt_seq_test[ix][x][0],mutant_aa_identity[x],diff[x][1]) for x in range(len(diff))])
+            mutants_to_gs[gpcr].extend( [(wt_seq_test[ix][x][1],wt_seq_test[ix][x][0],mutant_aa_identity[x],diff[x][3]) for x in range(len(diff))])
+
+    if use_DNN and use_pretrained_embeddings and not use_human_only:
+        outdir = f'interpretation/{act_or_amp}'
+        if not os.path.exists(f'interpretation/{act_or_amp}'):
+            os.makedirs(f'interpretation/{act_or_amp}')
+        outfns = ['{}_to_Go_muts_{}.csv', '{}_to_Gq_muts_{}.csv', '{}_to_Gs_muts_{}.csv']
+
+        for ix, gprot_muts in enumerate([mutants_to_go, mutants_to_gq, mutants_to_gs]):
+            for gpcr in mutants_to_go: 
+                with open(os.path.join(outdir, outfns[ix].format(gpcr, run_id)), 'w+') as f: 
+                    for mut_pred in mutants_to_go[gpcr]:
+                        score = float(mut_pred[-1])
+                        mut_str = mut_pred[0]+mut_pred[1]+mut_pred[2]
+                        if score > 0.01: 
+                            f.write(f'{mut_str},{score:.4f}\n')
 
 # Logistic regression, for comparison purposes.
 else:

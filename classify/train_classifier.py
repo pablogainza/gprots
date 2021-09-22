@@ -188,18 +188,15 @@ training_gpcrs = all_train_gpcr
 val_gpcrs= all_val_gpcr
 print(f'Total number of training gpcrs: {len(all_train_gpcr)}')
 
-
-
 # Define generator for validation and for training (possibly, mix ?) 
-training_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, use_pretrained_embeddings=use_pretrained_embeddings, batch_size=32, seqid_cutoff=0.5, shuffle_indexes=True,  human_only=use_human_only)
+training_generator = DataGenerator(training_gpcrs, human_acc, groundtruth, use_pretrained_embeddings=use_pretrained_embeddings, batch_size=32, seqid_cutoff=0.6, shuffle_indexes=True,  human_only=use_human_only)
 val_generator = DataGenerator(val_gpcrs, human_acc, groundtruth, use_pretrained_embeddings=use_pretrained_embeddings, batch_size=8, seqid_cutoff=0.8, shuffle_indexes=True, human_only=use_human_only)
 print(f'validation: {len(val_gpcrs)}')
 test_generator = DataGenerator(test_gpcr, human_acc, groundtruth, use_pretrained_embeddings=use_pretrained_embeddings, batch_size=128, seqid_cutoff=0.5, human_only=True, shuffle_indexes=False)
 
 if use_DNN:
-    LR = 0.0009 # maybe after some (10-15) epochs reduce it to 0.0008-0.0007
+    LR = 0.0009 
     drop_out = 0.38
-    batch_dim = 64
     input_shape = training_generator.__getInputShape__()
 
     model = Sequential()
