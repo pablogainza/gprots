@@ -215,7 +215,6 @@ test_generator = DataGenerator(test_gpcr, human_acc, groundtruth, use_pretrained
 if use_DNN:
     LR = 0.0009 # maybe after some (10-15) epochs reduce it to 0.0008-0.0007
     drop_out = 0.38
-    batch_dim = 64
     input_shape = training_generator.__getInputShape__()
 
     model = Sequential()
@@ -270,34 +269,63 @@ if use_DNN:
                 f.write(f',{ytrue[ix][gprot_ix]}') 
             f.write('\n')
 
-    # Now load the entire training set to do point mutants across the interface. 
+    # Now load the entire training set to do point mutants across the interface until a score > X is reached.  
     train_input, _, wt_seq_train = training_generator.getEntireSet()
     mutants_to_go = {}
     mutants_to_gq = {}
     mutants_to_gs = {}
     # For each protein in the input set, we will do 20 mutants at each position, randomly chosen. 
-    for ix, gpcr in enumerate(test_gpcr): 
-        for mut_ix in range(20): 
-            mutant_test_input = []
-            mutant_aa_identity = []
-            for iface_res_ix in range(test_input.shape[1]): 
-                tmp_mutant = test_input[ix].copy()
-                random_train_input = np.random.choice(len(train_input))
-                tmp_mutant[iface_res_ix] = train_input[random_train_input][iface_res_ix]
-                mutant_test_input.append(tmp_mutant)
-                mutant_aa_identity.append(wt_seq_train[random_train_input][iface_res_ix][1])
-            mutant_test_input = np.array(mutant_test_input)
-            result_mutant = model.predict(mutant_test_input)
-            # Subtract the mutant. 
-            diff = result_mutant - result[ix]
-            if gpcr not in mutants_to_go:
-                mutants_to_go[gpcr] = []
-                mutants_to_gq[gpcr] = []
-                mutants_to_gs[gpcr] = []
-   
-            mutants_to_go[gpcr].extend( [(wt_seq_test[ix][x][1],wt_seq_test[ix][x][0],mutant_aa_identity[x],diff[x][0]) for x in range(len(diff))])
-            mutants_to_gq[gpcr].extend( [(wt_seq_test[ix][x][1],wt_seq_test[ix][x][0],mutant_aa_identity[x],diff[x][1]) for x in range(len(diff))])
-            mutants_to_gs[gpcr].extend( [(wt_seq_test[ix][x][1],wt_seq_test[ix][x][0],mutant_aa_identity[x],diff[x][3]) for x in range(len(diff))])
+    # We also store the impact of each mutation from wildtype.
+    # We greedily pick the mutation that increases the score towards [Go, Gq, Gs]the most. 
+    for gprotein_index, cur_gprotein in enumerate(['Go', 'Gq', 'G15', 'Gs', 'G13']):
+        for ix, gpcr in enumerate(test_gpcr): 
+            #            out_mutagenesis_from_wt = open(f'interpretation/{act_or_amp}/{gpcr}_to_{cur_gprotein}_{run_id}_mutagenesis_from_wt.csv','w+')
+            with open(f'interpretation/{act_or_amp}/{gpcr}_from_{cur_gprotein}_{run_id}.csv','w+') as outf:
+                greedy_test_input = test_input[ix].copy()
+                # Do num_iface_residues greedy iterations.
+                outf.write(f'WT,{result[ix][gprotein_index]}\n')
+                for greedy_iter in range(test_input.shape[1]):
+                    # Keep track of assigned indexes.
+                    assigned_iface_ix = set()
+                    # make a tensor that contains the greedily optimized sequence.
+                    best_input = None
+                    best_score = 1
+                    best_mutation = None
+                    for mut_ix in range(20): 
+                        mutant_test_input = []
+                        mutant_aa_identity = []
+                        for iface_res_ix in range(test_input.shape[1]): 
+                            tmp_mutant = greedy_test_input.copy()
+                            random_train_input = np.random.choice(len(train_input))
+                            # Insertions and deletions are too complicated to predict with this method. 
+                            # Therefore if either test or the selected embedding from train is zero, don't do anything.
+                            if wt_seq_test[ix][iface_res_ix][0] != '0' and wt_seq_train[random_train_input][iface_res_ix][0] != '0':
+                                # random embedding taken from the training set (from the homolog position)
+                                tmp_mutant[iface_res_ix] = train_input[random_train_input][iface_res_ix]
+                            mutant_test_input.append(tmp_mutant)
+                            mutant_aa_identity.append(wt_seq_train[random_train_input][iface_res_ix][1])
+
+                        result_mutant = model.predict(np.array(mutant_test_input))
+                        best_iface_res_ix = np.argmin(result_mutant[:,gprotein_index])
+                        mutant_score = result_mutant[best_iface_res_ix][gprotein_index]
+                        
+                        # output the wildtype score.
+                        # Subtract the wildtype score from the mutant score. 
+#                        score_diff = result_mutant - result[ix]
+#                        if greedy_iter == 0:
+#                            for iface_res_ix in range(test_input.shape[1]): 
+#                                if wt_seq_test[ix][iface_res_ix][0] != '0':
+#                                    outline = f'{wt_seq_test[ix][iface_res_ix][1]}{wt_seq_test[ix][iface_res_ix][0]}{mutant_aa_identity[iface_res_ix]}'
+#                                    outline += f',{score_diff[iface_res_ix][gprotein_index]}\n'
+#                                    out_mutagenesis_from_wt.write(outline)
+                                
+                        if mutant_score < best_score: 
+                            best_score = mutant_score
+                            best_input = mutant_test_input[best_iface_res_ix].copy()
+                            best_mutation = (wt_seq_test[ix][best_iface_res_ix], mutant_aa_identity[best_iface_res_ix])
+
+                    outf.write(f'{best_mutation[0][1]},{best_mutation[0][0]},{best_mutation[1]},{best_score:.3f}\n')
+                    greedy_test_input = best_input
 
     if use_DNN and use_pretrained_embeddings and not use_human_only:
         outdir = f'interpretation/{act_or_amp}'
