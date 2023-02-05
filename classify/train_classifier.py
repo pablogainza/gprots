@@ -195,8 +195,8 @@ print(f'validation: {len(val_gpcrs)}')
 test_generator = DataGenerator(test_gpcr, human_acc, groundtruth, use_pretrained_embeddings=use_pretrained_embeddings, batch_size=128, seqid_cutoff=0.5, human_only=True, shuffle_indexes=False)
 
 if use_DNN:
-    LR = 0.0009 
-    drop_out = 0.38
+    LR = 0.001
+    drop_out = 0.40
     input_shape = training_generator.__getInputShape__()
 
     model = Sequential()
