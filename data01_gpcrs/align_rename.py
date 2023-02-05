@@ -1,4 +1,4 @@
-#!/usr/local/Cellar/python@3.9/3.9.2_2/bin/python3
+#!/usr/local/Cellar/python@3.9/3.9.13_4/bin/python3.9
 import sys
 import os
 sys.path.append('/usr/local/Cellar/pymol/2.4.0_3/libexec/lib/python3.9/site-packages')
@@ -19,7 +19,12 @@ for ix, row in df.iterrows():
     cmd.delete('obj01')
     print(row['HGNC'])
 
-    if row['GPCRDB_refined'] != '-':
+    if row['Prospective'] != '-': 
+        pdbfn = f"input_pdbs/from_prospective/{row['Prospective']}"
+        print(pdbfn)
+        cmd.load(pdbfn, 'src')
+        cmd.remove('src and not chain R')
+    elif row['GPCRDB_refined'] != '-':
         pdbfn = f"input_pdbs/from_gpcrdb_refined/{row['GPCRDB_refined']}"
         print(pdbfn)
         cmd.load(pdbfn, 'src')
