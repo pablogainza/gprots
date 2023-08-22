@@ -7,11 +7,11 @@ myrange = np.arange(20,40)
 gt = pd.read_csv('../ground_truth.csv')
 class_A = gt[gt['Class'] == 'A']
 
-gprots = ['gnaoAct','gnaqAct','gna15Act','gnas2Act','gnas13Act']
+gprots = ['gnaoAmp','gnaqAmp','gna15Amp','gnas2Amp','gnas13Amp']
 ypred = []
 ytrue = []
 for ix in myrange: 
-    with open(f'output/baseline_strong_activation_{ix:02}.csv') as f:
+    with open(f'output/baseline_binary_amplitude_{ix:02}.csv') as f:
         for line in f.readlines()[1:]:
             fields = line.split(',')
             gene = fields[0]
@@ -27,8 +27,8 @@ ypred = np.array(ypred)
 for ix, gprot in enumerate(gprots): 
     myytrue = ytrue[:,ix].copy()
     myypred = ypred[:,ix].copy()
-    np.save(f'strong_act_{gprot}_baseline_ytrue', myytrue)
-    np.save(f'strong_act_{gprot}_baseline_ypred', myypred)
+    np.save(f'binary_amp_{gprot}_baseline_ytrue', myytrue)
+    np.save(f'binary_amp_{gprot}_baseline_ypred', myypred)
 
 ypred = np.concatenate(ypred)
 ytrue = np.concatenate(ytrue)

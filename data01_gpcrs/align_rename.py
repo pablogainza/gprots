@@ -24,6 +24,9 @@ for ix, row in df.iterrows():
         print(pdbfn)
         cmd.load(pdbfn, 'src')
         cmd.remove('src and not chain R')
+    else:
+        continue
+    """
     elif row['GPCRDB_refined'] != '-':
         pdbfn = f"input_pdbs/from_gpcrdb_refined/{row['GPCRDB_refined']}"
         print(pdbfn)
@@ -43,8 +46,10 @@ for ix, row in df.iterrows():
         cmd.load(pdbfn, 'src')
     else:
         print(f"No pdb file entry for {row} ")
+    """
     # Remove not protein.
     cmd.remove('src and not polymer.protein')
+    cmd.save('test.pse')
 
     cmd.cealign('align_target', 'src', quiet=0)
 #    print(f"RMSD {row['HGNC']} = {ret[0]}")

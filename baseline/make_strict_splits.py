@@ -44,7 +44,7 @@ protein_list = classA_protein_list
 uid_list = classA_uid_list
                
 
-clustering = AgglomerativeClustering(distance_threshold=10,linkage='single',n_clusters=None,compute_distances=True)
+clustering = AgglomerativeClustering(distance_threshold=7,linkage='single',n_clusters=None,compute_distances=True)
 clustering.fit(X)
 print(clustering.labels_)
 for i in range(len(clustering.labels_)): 
