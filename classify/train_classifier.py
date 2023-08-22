@@ -227,12 +227,12 @@ if use_DNN:
 
     checkpoint = ModelCheckpoint(f'models/weights_learn_amplitude_{gprotein}_{run_id}_{use_DNN}_{use_pretrained_embeddings}_{use_human_only}.hdf5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
     callbacks_list = [checkpoint]
-    history = model.fit_generator(generator=training_generator, epochs=100, validation_data=val_generator, callbacks=callbacks_list)
+    history = model.fit_generator(generator=training_generator, epochs=32, validation_data=val_generator, callbacks=callbacks_list)
 
     # Load best model
     model.load_weights(f'models/weights_learn_amplitude_{gprotein}_{run_id}_{use_DNN}_{use_pretrained_embeddings}_{use_human_only}.hdf5')
 
-    # Compute human predictions on test (hidden) set 
+    # Compute human predictions on test (hidden) set. repeat this ten times and get the variance. 
     test_input, ytrue = test_generator.__getitem__(0)
     result = model.predict(test_input)
 
