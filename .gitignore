@@ -2,3 +2,4 @@
 *.aln
 *DS_Store
 debug.pse
+untracked/
