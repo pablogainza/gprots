@@ -4,3 +4,6 @@
 debug.pse
 untracked/
 *.hdf5
+classify/interpretation
+classify/interpretation_eval
+*__pycache__*/
