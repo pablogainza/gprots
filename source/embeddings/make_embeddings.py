@@ -31,7 +31,7 @@ fe = pipeline('feature-extraction', model=model, tokenizer=tokenizer,device=0)
 
 #sequences_Example = [re.sub(r"[UZOB]", "X", sequence) for sequence in sequences_Example]
 
-print('Starting embedding')
+print('Starting embedding: ', in_fasta, outdir)
 # split into files of size 100
 splits = np.arange(0,len(seqs_bert), 100)
 splits = np.append(splits, len(seqs_bert))
